@@ -1,0 +1,164 @@
+{
+  "projectType": "data-platform",
+  "projectName": "Apache Pulsar",
+  "projectDescription": "Distributed pub-sub messaging platform with flexible messaging model and intuitive client API",
+  "theme": "aspen",
+  "primaryColor": "#188fff",
+  "lightColor": "#4aa3ff",
+  "darkColor": "#0d6ecc",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/messaging",
+              "concepts/topics",
+              "concepts/subscriptions",
+              "concepts/producers-consumers",
+              "concepts/multi-tenancy",
+              "concepts/schemas"
+            ]
+          },
+          {
+            "group": "Client Libraries",
+            "pages": [
+              "clients/overview",
+              "clients/java",
+              "clients/python",
+              "clients/go",
+              "clients/cpp",
+              "clients/nodejs",
+              "clients/dotnet"
+            ]
+          },
+          {
+            "group": "Pulsar Functions",
+            "pages": [
+              "functions/overview",
+              "functions/developing",
+              "functions/deploying",
+              "functions/runtime"
+            ]
+          },
+          {
+            "group": "Pulsar IO",
+            "pages": [
+              "io/overview",
+              "io/connectors",
+              "io/developing-connectors"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/standalone",
+              "deployment/cluster",
+              "deployment/kubernetes",
+              "deployment/docker"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/configuration",
+              "operations/monitoring",
+              "operations/geo-replication",
+              "operations/tiered-storage",
+              "operations/backup-restore"
+            ]
+          },
+          {
+            "group": "Security",
+            "pages": [
+              "security/overview",
+              "security/authentication",
+              "security/authorization",
+              "security/encryption"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Admin API",
+        "groups": [
+          {
+            "group": "REST API",
+            "pages": [
+              "admin-api/overview",
+              "admin-api/tenants",
+              "admin-api/namespaces",
+              "admin-api/topics",
+              "admin-api/schemas",
+              "admin-api/clusters",
+              "admin-api/brokers"
+            ]
+          },
+          {
+            "group": "CLI Tools",
+            "pages": [
+              "cli/pulsar-admin",
+              "cli/pulsar-client",
+              "cli/pulsar"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Client API Reference",
+        "groups": [
+          {
+            "group": "Java Client API",
+            "pages": [
+              "api/java/client-builder",
+              "api/java/producer",
+              "api/java/consumer",
+              "api/java/reader",
+              "api/java/message",
+              "api/java/schema"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Horizontally scalable pub-sub messaging",
+    "Multi-tenancy with authentication and authorization",
+    "Geo-replication across clusters",
+    "Pulsar Functions for serverless stream processing",
+    "Pulsar IO connectors for external integrations",
+    "Tiered storage for cost-effective data retention",
+    "Strong ordering and consistency guarantees",
+    "Schema registry and evolution",
+    "REST Admin API for cluster management"
+  ],
+  "publicApiSurface": [
+    "PulsarClient - Main client interface",
+    "Producer - Publish messages to topics",
+    "Consumer - Subscribe and consume messages",
+    "Reader - Read messages from specific positions",
+    "Message - Message data structure",
+    "Schema - Schema definitions and serialization",
+    "pulsar-admin - Administrative CLI tool",
+    "pulsar-client - Client CLI tool",
+    "REST Admin API - HTTP API for cluster management",
+    "/admin/v2/tenants - Tenant management endpoint",
+    "/admin/v2/namespaces - Namespace management endpoint",
+    "/admin/v2/persistent - Topic management endpoint",
+    "/admin/v2/schemas - Schema management endpoint",
+    "/admin/v2/clusters - Cluster management endpoint",
+    "/admin/v2/brokers - Broker management endpoint"
+  ]
+}
