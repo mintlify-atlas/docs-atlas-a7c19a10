@@ -1,0 +1,687 @@
+---
+title: Installation
+description: Install Apache Pulsar using Docker, Kubernetes, or as a standalone service for development and production environments.
+---
+
+Apache Pulsar can be deployed in various ways depending on your use case. This guide covers installation methods from simple standalone deployments to production-ready Kubernetes clusters.
+
+## Java requirements
+
+<Warning>
+Pulsar requires Java to run. Make sure you have the correct Java version installed before proceeding.
+</Warning>
+
+Pulsar's Java version requirements vary by version and component:
+
+### Pulsar 4.1+ and master branch
+
+| Component | Java Version |
+|-----------|-------------|
+| Broker | 21 |
+| Functions / IO | 21 |
+| CLI | 17 or 21 |
+| Java Client | 17 or 21 |
+
+**Docker image Java runtime**: 21
+
+### Pulsar 3.3 to 4.0
+
+| Component | Java Version |
+|-----------|-------------|
+| Broker | 21 |
+| Functions / IO | 21 |
+| CLI | 17 or 21 |
+| Java Client | 8, 11, 17 or 21 |
+
+**Docker image Java runtime**: 21
+
+### Pulsar 2.10 to 3.0
+
+| Component | Java Version |
+|-----------|-------------|
+| Broker | 17 |
+| Functions / IO | 17 |
+| CLI | 17 |
+| Java Client | 8, 11, or 17 |
+
+**Docker image Java runtime**: 17
+
+<Tip>
+When using Java versions, it is recommended to use a recent version of a particular Java release (17 or 21) with the most recent bug fixes and security patches. Download from [Eclipse Temurin](https://adoptium.net/en-GB/temurin/releases).
+</Tip>
+
+## Docker installation
+
+The easiest way to run Pulsar is using Docker. This method is ideal for development, testing, and getting started quickly.
+
+### Standalone mode
+
+<Steps>
+  <Step title="Pull the Pulsar image">
+    Download the latest Pulsar Docker image:
+
+    ```bash
+    docker pull apachepulsar/pulsar:latest
+    ```
+
+    <Info>
+    The `pulsar:latest` image includes the Pulsar broker, BookKeeper, and ZooKeeper. For a complete image with all connectors and tools, use `apachepulsar/pulsar-all:latest`.
+    </Info>
+  </Step>
+
+  <Step title="Start Pulsar standalone">
+    Run Pulsar in standalone mode with a single command:
+
+    ```bash
+    docker run -it \
+      -p 6650:6650 \
+      -p 8080:8080 \
+      --name pulsar-standalone \
+      apachepulsar/pulsar:latest \
+      bin/pulsar standalone
+    ```
+
+    This exposes:
+    - Port `6650`: Pulsar broker (binary protocol)
+    - Port `8080`: HTTP API and admin interface
+  </Step>
+
+  <Step title="Verify the installation">
+    Check that Pulsar is running:
+
+    ```bash
+    # Check broker status
+    docker exec -it pulsar-standalone bin/pulsar-admin brokers healthcheck
+
+    # List topics
+    docker exec -it pulsar-standalone bin/pulsar-admin topics list public/default
+    ```
+  </Step>
+</Steps>
+
+### Persist data with volumes
+
+By default, data is stored inside the container and will be lost when the container stops. To persist data:
+
+```bash
+docker run -it \
+  -p 6650:6650 \
+  -p 8080:8080 \
+  -v $PWD/data:/pulsar/data \
+  --name pulsar-standalone \
+  apachepulsar/pulsar:latest \
+  bin/pulsar standalone
+```
+
+### Docker Compose for multi-node setup
+
+For a more production-like environment with multiple brokers and bookies, use Docker Compose. Here's an example based on the Pulsar source code:
+
+<CodeGroup>
+```yaml Simple setup
+# Based on source: tests/compose/simple/docker-compose.yml
+version: '2.1'
+
+networks:
+  pulsar:
+    driver: bridge
+
+services:
+  zk:
+    hostname: zk
+    image: apachepulsar/pulsar:latest
+    command: bin/pulsar zookeeper
+    environment:
+      ZOOKEEPER_SERVERS: zk
+    networks:
+      - pulsar
+
+  pulsar-init:
+    image: apachepulsar/pulsar:latest
+    command: >
+      bin/pulsar initialize-cluster-metadata
+        --cluster test
+        --zookeeper zk:2181
+        --configuration-store zk:2181
+        --web-service-url http://broker:8080
+        --broker-service-url pulsar://broker:6650
+    depends_on:
+      - zk
+    networks:
+      - pulsar
+
+  bookie:
+    hostname: bookie
+    image: apachepulsar/pulsar:latest
+    command: bin/pulsar bookie
+    environment:
+      clusterName: test
+      zkServers: zk:2181
+    depends_on:
+      - zk
+      - pulsar-init
+    networks:
+      - pulsar
+
+  broker:
+    hostname: broker
+    image: apachepulsar/pulsar:latest
+    command: bin/pulsar broker
+    environment:
+      clusterName: test
+      zookeeperServers: zk:2181
+      configurationStoreServers: zk:2181
+    ports:
+      - "6650:6650"
+      - "8080:8080"
+    depends_on:
+      - zk
+      - bookie
+      - pulsar-init
+    networks:
+      - pulsar
+```
+
+```yaml Production-like setup
+# Based on source: docker-compose/kitchen-sink/docker-compose.yml
+# Full setup with multiple ZooKeeper nodes, bookies, brokers, and proxies
+version: '3'
+
+networks:
+  pulsar:
+    driver: bridge
+
+services:
+  # ZooKeeper ensemble (3 nodes)
+  zk1:
+    image: apachepulsar/pulsar-all:latest
+    hostname: zk1
+    command: bin/pulsar zookeeper
+    environment:
+      ZOOKEEPER_SERVERS: zk1,zk2,zk3
+      PULSAR_MEM: -Xmx128m
+    networks:
+      - pulsar
+
+  zk2:
+    image: apachepulsar/pulsar-all:latest
+    hostname: zk2
+    command: bin/pulsar zookeeper
+    environment:
+      ZOOKEEPER_SERVERS: zk1,zk2,zk3
+      PULSAR_MEM: -Xmx128m
+    networks:
+      - pulsar
+
+  zk3:
+    image: apachepulsar/pulsar-all:latest
+    hostname: zk3
+    command: bin/pulsar zookeeper
+    environment:
+      ZOOKEEPER_SERVERS: zk1,zk2,zk3
+      PULSAR_MEM: -Xmx128m
+    networks:
+      - pulsar
+
+  # Initialize cluster metadata
+  pulsar-init:
+    image: apachepulsar/pulsar-all:latest
+    command: bin/init-cluster.sh
+    environment:
+      clusterName: test
+      zkServers: zk1:2181
+      configurationStore: zk1:2181
+      pulsarNode: proxy1
+    depends_on:
+      - zk1
+      - zk2
+      - zk3
+    networks:
+      - pulsar
+
+  # BookKeeper ensemble (3 bookies)
+  bk1:
+    image: apachepulsar/pulsar-all:latest
+    hostname: bk1
+    command: bin/pulsar bookie
+    environment:
+      clusterName: test
+      zkServers: zk1:2181,zk2:2181,zk3:2181
+      BOOKIE_MEM: -Xmx256m
+    depends_on:
+      - zk1
+      - zk2
+      - zk3
+      - pulsar-init
+    networks:
+      - pulsar
+
+  bk2:
+    image: apachepulsar/pulsar-all:latest
+    hostname: bk2
+    command: bin/pulsar bookie
+    environment:
+      clusterName: test
+      zkServers: zk1:2181,zk2:2181,zk3:2181
+      BOOKIE_MEM: -Xmx256m
+    depends_on:
+      - zk1
+      - zk2
+      - zk3
+      - pulsar-init
+      - bk1
+    networks:
+      - pulsar
+
+  bk3:
+    image: apachepulsar/pulsar-all:latest
+    hostname: bk3
+    command: bin/pulsar bookie
+    environment:
+      clusterName: test
+      zkServers: zk1:2181,zk2:2181,zk3:2181
+      BOOKIE_MEM: -Xmx256m
+    depends_on:
+      - zk1
+      - zk2
+      - zk3
+      - pulsar-init
+      - bk1
+      - bk2
+    networks:
+      - pulsar
+
+  # Pulsar brokers (3 nodes)
+  broker1:
+    image: apachepulsar/pulsar-all:latest
+    hostname: broker1
+    restart: on-failure
+    command: bin/pulsar broker
+    environment:
+      clusterName: test
+      zookeeperServers: zk1:2181,zk2:2181,zk3:2181
+      configurationStore: zk1:2181,zk2:2181,zk3:2181
+      PULSAR_MEM: -Xmx256m
+    depends_on:
+      - zk1
+      - zk2
+      - zk3
+      - pulsar-init
+      - bk1
+      - bk2
+      - bk3
+    networks:
+      - pulsar
+
+  # Pulsar proxy
+  proxy1:
+    image: apachepulsar/pulsar-all:latest
+    hostname: proxy1
+    restart: on-failure
+    command: bin/pulsar proxy
+    environment:
+      clusterName: test
+      zookeeperServers: zk1:2181,zk2:2181,zk3:2181
+      configurationStoreServers: zk1:2181,zk2:2181,zk3:2181
+      PULSAR_MEM: -Xmx256m
+    ports:
+      - "6650:6650"
+      - "8080:8080"
+    depends_on:
+      - zk1
+      - zk2
+      - zk3
+      - pulsar-init
+      - broker1
+    networks:
+      - pulsar
+```
+</CodeGroup>
+
+To start the cluster:
+
+```bash
+# Start all services
+docker-compose up -d
+
+# Check status
+docker-compose ps
+
+# View logs
+docker-compose logs -f broker
+
+# Stop all services
+docker-compose down
+```
+
+## Standalone binary installation
+
+For local development or single-machine deployments, you can install Pulsar as a standalone binary.
+
+<Steps>
+  <Step title="Download Pulsar">
+    Download the latest release from the Apache Pulsar website:
+
+    ```bash
+    wget https://archive.apache.org/dist/pulsar/pulsar-3.3.0/apache-pulsar-3.3.0-bin.tar.gz
+    ```
+
+    Or download from the [official downloads page](https://pulsar.apache.org/download/).
+  </Step>
+
+  <Step title="Extract the archive">
+    Extract the downloaded tarball:
+
+    ```bash
+    tar xvfz apache-pulsar-3.3.0-bin.tar.gz
+    cd apache-pulsar-3.3.0
+    ```
+  </Step>
+
+  <Step title="Start Pulsar standalone">
+    Run Pulsar in standalone mode:
+
+    ```bash
+    bin/pulsar standalone
+    ```
+
+    <Info>
+    Standalone mode is available via the `bin/pulsar` CLI tool with the `standalone` command, as defined in `bin/pulsar:60`.
+    </Info>
+  </Step>
+
+  <Step title="Run in the background">
+    To run Pulsar as a background service:
+
+    ```bash
+    # Start in background
+    bin/pulsar-daemon start standalone
+
+    # Check status
+    bin/pulsar-admin brokers healthcheck
+
+    # Stop the service
+    bin/pulsar-daemon stop standalone
+    ```
+  </Step>
+</Steps>
+
+### Configure standalone mode
+
+Standalone configuration is located at `conf/standalone.conf`. Key settings include:
+
+```properties
+# Broker service port
+brokerServicePort=6650
+
+# Web service port
+webServicePort=8080
+
+# Data directories
+zookeeperServers=localhost:2181
+```
+
+## Kubernetes installation
+
+For production deployments, Kubernetes is the recommended platform. Pulsar provides official Helm charts for easy deployment.
+
+<Warning>
+Kubernetes installation requires familiarity with Kubernetes concepts and `kubectl` command-line tool.
+</Warning>
+
+### Prerequisites
+
+- Kubernetes cluster (1.20+)
+- `kubectl` configured to access your cluster
+- Helm 3.x installed
+
+### Install with Helm
+
+<Steps>
+  <Step title="Add the Pulsar Helm repository">
+    ```bash
+    helm repo add apache https://pulsar.apache.org/charts
+    helm repo update
+    ```
+  </Step>
+
+  <Step title="Create a namespace">
+    ```bash
+    kubectl create namespace pulsar
+    ```
+  </Step>
+
+  <Step title="Install Pulsar">
+    Install with default values:
+
+    ```bash
+    helm install pulsar apache/pulsar \
+      --namespace pulsar \
+      --set initialize=true
+    ```
+
+    Or customize the installation:
+
+    ```bash
+    helm install pulsar apache/pulsar \
+      --namespace pulsar \
+      --set initialize=true \
+      --set broker.replicaCount=3 \
+      --set bookkeeper.replicaCount=3 \
+      --set zookeeper.replicaCount=3
+    ```
+  </Step>
+
+  <Step title="Verify the installation">
+    Check that all pods are running:
+
+    ```bash
+    kubectl get pods -n pulsar
+    ```
+
+    You should see pods for:
+    - ZooKeeper (3 replicas)
+    - BookKeeper (3 replicas)
+    - Pulsar brokers (3 replicas)
+    - Pulsar proxy
+  </Step>
+
+  <Step title="Access the cluster">
+    Forward the proxy port to your local machine:
+
+    ```bash
+    kubectl port-forward -n pulsar svc/pulsar-proxy 6650:6650 8080:8080
+    ```
+
+    Now you can connect to `pulsar://localhost:6650`.
+  </Step>
+</Steps>
+
+### Production considerations
+
+For production deployments, consider:
+
+- **Persistent storage**: Configure persistent volumes for BookKeeper and ZooKeeper
+- **Resource limits**: Set appropriate CPU and memory limits
+- **Monitoring**: Enable Prometheus metrics and Grafana dashboards
+- **Security**: Configure TLS, authentication, and authorization
+- **High availability**: Use multiple replicas for all components
+- **Anti-affinity**: Distribute pods across nodes and availability zones
+
+Example Helm values for production:
+
+```yaml
+# values.yaml
+zookeeper:
+  replicaCount: 3
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 1
+  persistence:
+    enabled: true
+    size: 20Gi
+
+bookkeeper:
+  replicaCount: 3
+  resources:
+    requests:
+      memory: 4Gi
+      cpu: 2
+  persistence:
+    enabled: true
+    journal:
+      size: 10Gi
+    ledgers:
+      size: 50Gi
+
+broker:
+  replicaCount: 3
+  resources:
+    requests:
+      memory: 4Gi
+      cpu: 2
+
+proxy:
+  replicaCount: 2
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 0.5
+
+monitoring:
+  prometheus: true
+  grafana: true
+```
+
+Install with custom values:
+
+```bash
+helm install pulsar apache/pulsar \
+  --namespace pulsar \
+  --values values.yaml
+```
+
+## Build from source
+
+If you need to build Pulsar from source, follow these steps:
+
+### Requirements
+
+- JDK 21 (for master/4.0+) or JDK 17 (for 2.11+)
+- Maven 3.9.9+
+- zip
+
+<Tip>
+Pulsar includes a Maven Wrapper, so you can use `./mvnw` instead of `mvn` if you don't have Maven installed.
+</Tip>
+
+### Build steps
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/apache/pulsar.git
+    cd pulsar
+    ```
+  </Step>
+
+  <Step title="Build Pulsar">
+    Compile and install:
+
+    ```bash
+    mvn install -DskipTests
+    ```
+
+    For a minimal build (skips external connectors):
+
+    ```bash
+    mvn install -Pcore-modules,-main -DskipTests
+    ```
+  </Step>
+
+  <Step title="Find the distribution">
+    The built distribution is located at:
+
+    ```bash
+    distribution/server/target/apache-pulsar-<version>-bin.tar.gz
+    ```
+  </Step>
+
+  <Step title="Extract and run">
+    ```bash
+    cd distribution/server/target
+    tar xvfz apache-pulsar-*-bin.tar.gz
+    cd apache-pulsar-*
+    bin/pulsar standalone
+    ```
+  </Step>
+</Steps>
+
+### Build Docker images
+
+To build custom Docker images:
+
+```bash
+mvn clean install -DskipTests
+export DOCKER_CLI_EXPERIMENTAL=enabled
+mvn package -Pdocker,-main -am -pl docker/pulsar-all -DskipTests
+```
+
+This creates:
+- `apachepulsar/pulsar-all:latest`
+- `apachepulsar/pulsar:latest`
+
+## Verify your installation
+
+Regardless of installation method, verify Pulsar is working:
+
+<CodeGroup>
+```bash Check broker health
+pulsar-admin brokers healthcheck
+```
+
+```bash List namespaces
+pulsar-admin namespaces list public
+```
+
+```bash Create a topic
+pulsar-admin topics create persistent://public/default/test-topic
+```
+
+```bash Send a test message
+pulsar-client produce persistent://public/default/test-topic \
+  --messages "Hello Pulsar" \
+  --num-produce 1
+```
+
+```bash Consume the message
+pulsar-client consume persistent://public/default/test-topic \
+  --subscription-name test-sub \
+  --num-messages 1
+```
+</CodeGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart guide" icon="rocket" href="/quickstart">
+    Try Pulsar with a simple pub-sub example
+  </Card>
+  
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Learn about configuration options
+  </Card>
+  
+  <Card title="Client libraries" icon="code" href="/client-libraries">
+    Connect to Pulsar from your applications
+  </Card>
+  
+  <Card title="Admin API" icon="screwdriver-wrench" href="/admin-api">
+    Manage your Pulsar cluster
+  </Card>
+</CardGroup>
+
+<Note>
+All code examples and configurations are extracted from the Apache Pulsar source code to ensure accuracy and authenticity.
+</Note>

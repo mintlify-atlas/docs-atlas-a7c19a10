@@ -1,0 +1,424 @@
+---
+title: Backup and Restore
+description: Backup and restore Pulsar topics and metadata for disaster recovery
+---
+
+Apache Pulsar provides multiple strategies for backing up and restoring data. A comprehensive backup strategy includes both topic data and metadata (configuration, schemas, subscriptions).
+
+## Backup Strategies
+
+Pulsar supports several backup approaches:
+
+1. **Tiered Storage** - Automatic offloading to cloud storage (recommended for retention)
+2. **Topic Snapshots** - Export topic data to external storage
+3. **Metadata Backup** - Backup cluster metadata from ZooKeeper/metadata store
+4. **BookKeeper Backup** - Backup raw BookKeeper ledger data
+5. **Geo-Replication** - Use remote clusters as live backups
+
+## Backing Up Topic Data
+
+### Using Tiered Storage
+
+Tiered storage provides automatic, continuous backup to cloud storage:
+
+```properties
+# broker.conf
+managedLedgerOffloadDriver=aws-s3
+s3ManagedLedgerOffloadBucket=pulsar-backup
+managedLedgerOffloadAutoTriggerSizeThresholdBytes=1073741824
+managedLedgerOffloadDeletionLagMs=86400000  # Keep in BookKeeper for 24h
+```
+
+See [Tiered Storage](/operations/tiered-storage) for detailed configuration.
+
+### Manual Topic Export
+
+Export messages from a topic to a file:
+
+```bash
+# Read and save messages to file
+pulsar-client consume persistent://tenant/namespace/topic \
+  --subscription-name backup-sub \
+  --subscription-type Exclusive \
+  --num-messages 0 \
+  > topic-backup.json
+```
+
+For programmatic backup:
+
+```java
+import org.apache.pulsar.client.api.*;
+import java.io.FileWriter;
+
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar://localhost:6650")
+    .build();
+
+Consumer<byte[]> consumer = client.newConsumer()
+    .topic("persistent://tenant/namespace/topic")
+    .subscriptionName("backup-subscription")
+    .subscriptionType(SubscriptionType.Exclusive)
+    .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
+    .subscribe();
+
+FileWriter writer = new FileWriter("backup.jsonl");
+
+while (true) {
+    Message<byte[]> msg = consumer.receive(5, TimeUnit.SECONDS);
+    if (msg == null) break;
+    
+    // Write message data
+    writer.write(new String(msg.getData()));
+    writer.write("\n");
+    
+    consumer.acknowledge(msg);
+}
+
+writer.close();
+consumer.close();
+client.close();
+```
+
+### Backup with Message Reader
+
+Use a reader for non-destructive backup:
+
+```java
+Reader<byte[]> reader = client.newReader()
+    .topic("persistent://tenant/namespace/topic")
+    .startMessageId(MessageId.earliest)
+    .create();
+
+while (reader.hasMessageAvailable()) {
+    Message<byte[]> msg = reader.readNext();
+    // Process and store message
+}
+
+reader.close();
+```
+
+## Backing Up Metadata
+
+### Tenant and Namespace Configuration
+
+Export tenant and namespace policies:
+
+```bash
+# Backup tenant configuration
+pulsar-admin tenants get my-tenant > tenant-config.json
+
+# Backup namespace configuration
+pulsar-admin namespaces get-backlog-quotas tenant/namespace > ns-backlog-quota.json
+pulsar-admin namespaces get-retention tenant/namespace > ns-retention.json
+pulsar-admin namespaces get-replication-clusters tenant/namespace > ns-replication.json
+```
+
+### Topic Configuration
+
+Export topic-level settings:
+
+```bash
+# List all topics in namespace
+pulsar-admin topics list tenant/namespace > topics-list.txt
+
+# Backup topic configuration
+pulsar-admin topics get-backlog-quotas persistent://tenant/namespace/topic > topic-backlog.json
+pulsar-admin topics get-retention persistent://tenant/namespace/topic > topic-retention.json
+```
+
+### Schema Backup
+
+Export schemas:
+
+```bash
+# Get schema for a topic
+pulsar-admin schemas get persistent://tenant/namespace/topic > schema.json
+
+# Export all schemas in namespace (script)
+for topic in $(pulsar-admin topics list tenant/namespace); do
+  pulsar-admin schemas get $topic > "schema-$(basename $topic).json"
+done
+```
+
+### Subscription State
+
+Backup subscription positions:
+
+```bash
+# Get subscription stats (includes position)
+pulsar-admin topics stats persistent://tenant/namespace/topic > topic-stats.json
+
+# Get cursor position for subscription
+pulsar-admin topics get-subscription-position \
+  persistent://tenant/namespace/topic \
+  --subscription my-sub
+```
+
+## Backing Up Metadata Store
+
+### ZooKeeper Backup
+
+For clusters using ZooKeeper:
+
+```bash
+# Export ZooKeeper data
+bin/pulsar zookeeper-shell \
+  --server localhost:2181 \
+  --cmd dump > zookeeper-backup.txt
+
+# Backup ZooKeeper snapshots
+cp -r data/zookeeper/version-2 /backup/zookeeper-snapshots/
+```
+
+### Metadata Store Backup
+
+For other metadata stores (e.g., etcd):
+
+```bash
+# Example for etcd
+etcdctl snapshot save metadata-backup.db
+```
+
+## BookKeeper Backup
+
+### Ledger Backup
+
+Backup BookKeeper ledger data:
+
+```bash
+# Snapshot BookKeeper data directories
+for bookie in bookie-1 bookie-2 bookie-3; do
+  rsync -av $bookie:/data/bookkeeper/ /backup/bookkeeper-$bookie/
+done
+```
+
+### Metadata Backup
+
+BookKeeper metadata is stored in ZooKeeper under `/ledgers`. Include it in ZooKeeper backups.
+
+## Restoring Topic Data
+
+### Restore from Tiered Storage
+
+Data in tiered storage is automatically accessible. Configure the broker with the same offload settings:
+
+```properties
+managedLedgerOffloadDriver=aws-s3
+s3ManagedLedgerOffloadBucket=pulsar-backup
+s3ManagedLedgerOffloadRegion=us-west-2
+```
+
+Consumers can read historical data from tiered storage transparently.
+
+### Restore from Export
+
+Republish messages from backup:
+
+```java
+Producer<byte[]> producer = client.newProducer()
+    .topic("persistent://tenant/namespace/topic-restored")
+    .create();
+
+BufferedReader reader = new BufferedReader(new FileReader("backup.jsonl"));
+String line;
+
+while ((line = reader.readLine()) != null) {
+    producer.send(line.getBytes());
+}
+
+producer.close();
+```
+
+### Restore with Event Time
+
+Preserve original timestamps:
+
+```java
+producer.newMessage()
+    .value(messageData)
+    .eventTime(originalTimestamp)
+    .send();
+```
+
+## Restoring Metadata
+
+### Tenant and Namespace
+
+Recreate tenant and namespace configuration:
+
+```bash
+# Restore tenant
+pulsar-admin tenants create my-tenant \
+  --allowed-clusters cluster1,cluster2 \
+  --admin-roles admin1,admin2
+
+# Restore namespace
+pulsar-admin namespaces create tenant/namespace
+
+# Restore policies
+pulsar-admin namespaces set-retention tenant/namespace \
+  --size 10G --time 7d
+
+pulsar-admin namespaces set-replication-clusters tenant/namespace \
+  --clusters cluster1,cluster2
+```
+
+### Schema Restore
+
+Upload schemas:
+
+```bash
+pulsar-admin schemas upload \
+  persistent://tenant/namespace/topic \
+  --filename schema.json
+```
+
+### Subscription Position
+
+Reset subscription to backed-up position:
+
+```bash
+pulsar-admin topics reset-cursor \
+  persistent://tenant/namespace/topic \
+  --subscription my-sub \
+  --messageId <backed-up-message-id>
+```
+
+## Disaster Recovery Procedures
+
+### Complete Cluster Recovery
+
+1. **Restore metadata store** (ZooKeeper/etcd)
+2. **Restore BookKeeper data** (if not using tiered storage)
+3. **Start Pulsar brokers** with original configuration
+4. **Verify cluster health**
+5. **Restore topic configurations and schemas**
+6. **Verify data accessibility**
+
+### Topic-Level Recovery
+
+1. **Create topic** with original configuration
+2. **Upload schema** if applicable
+3. **Restore messages** from backup
+4. **Create subscriptions** at appropriate positions
+5. **Verify consumers** can read data
+
+## Automated Backup Scripts
+
+### Daily Backup Script
+
+```bash
+#!/bin/bash
+# daily-backup.sh
+
+BACKUP_DIR="/backup/pulsar/$(date +%Y-%m-%d)"
+mkdir -p $BACKUP_DIR
+
+# Backup ZooKeeper
+bin/pulsar zookeeper-shell --server localhost:2181 --cmd dump > $BACKUP_DIR/zookeeper.txt
+
+# Backup all tenant configs
+for tenant in $(pulsar-admin tenants list); do
+  pulsar-admin tenants get $tenant > $BACKUP_DIR/tenant-$tenant.json
+done
+
+# Backup all namespace configs
+for namespace in $(pulsar-admin namespaces list public); do
+  ns_safe=$(echo $namespace | tr '/' '_')
+  pulsar-admin namespaces policies $namespace > $BACKUP_DIR/namespace-$ns_safe.json
+done
+
+# Compress backup
+tar -czf /backup/pulsar-backup-$(date +%Y-%m-%d).tar.gz -C /backup/pulsar $(date +%Y-%m-%d)
+
+echo "Backup completed: $BACKUP_DIR"
+```
+
+### Backup Retention
+
+```bash
+#!/bin/bash
+# cleanup-old-backups.sh
+
+# Keep backups for 30 days
+find /backup/pulsar-backup-*.tar.gz -mtime +30 -delete
+```
+
+## Geo-Replication as Backup
+
+Use geo-replication for live backup:
+
+```bash
+# Enable replication to backup cluster
+pulsar-admin namespaces set-clusters tenant/namespace \
+  --clusters production,backup
+```
+
+In disaster scenarios:
+
+1. **Point clients** to backup cluster
+2. **Verify data integrity**
+3. **Rebuild primary cluster**
+4. **Re-enable replication** when primary is restored
+
+See [Geo-Replication](/operations/geo-replication) for details.
+
+## Monitoring Backups
+
+### Backup Validation
+
+Regularly verify backups:
+
+```bash
+# Test restore to temporary namespace
+pulsar-admin namespaces create tenant/backup-test
+
+# Restore and verify data
+# ... restore procedure ...
+
+# Delete test namespace
+pulsar-admin namespaces delete tenant/backup-test
+```
+
+### Backup Metrics
+
+Track backup operations:
+
+- Last successful backup timestamp
+- Backup size and duration
+- Failed backup attempts
+- Tiered storage offload metrics
+
+## Best Practices
+
+1. **Multiple backup methods** - Combine tiered storage, geo-replication, and snapshots
+2. **Regular testing** - Test restore procedures quarterly
+3. **Offsite backups** - Store backups in different geographic regions
+4. **Retention policies** - Define how long to keep backups
+5. **Incremental backups** - Use tiered storage for continuous backup
+6. **Document procedures** - Maintain runbooks for recovery scenarios
+7. **Monitor backup health** - Alert on backup failures
+8. **Secure backups** - Encrypt backup data at rest and in transit
+9. **Version control** - Keep configuration and scripts in version control
+10. **Automate backups** - Use cron jobs or orchestration tools
+11. **Test failure scenarios** - Practice recovery from various failure modes
+12. **Backup metadata** - Don't forget schemas, subscriptions, and configurations
+
+## Recovery Time Objectives
+
+Plan for different recovery scenarios:
+
+- **Single topic corruption** - Minutes to hours (restore from tiered storage)
+- **Namespace deletion** - Hours (restore metadata and data)
+- **Complete cluster failure** - Hours to days (rebuild cluster and restore data)
+- **Data center disaster** - Switch to geo-replicated cluster (minutes to hours)
+
+## Compliance and Audit
+
+For regulated industries:
+
+- **Backup logs** - Maintain audit trails of backup operations
+- **Access controls** - Restrict backup access to authorized personnel
+- **Encryption** - Encrypt backups meeting compliance requirements
+- **Retention compliance** - Align backup retention with data regulations
+- **Recovery testing** - Document and track recovery test results

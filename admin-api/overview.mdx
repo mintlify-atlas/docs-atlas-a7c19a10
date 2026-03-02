@@ -1,0 +1,210 @@
+---
+title: "Admin API Overview"
+description: "Comprehensive guide to Apache Pulsar's REST Admin API for managing clusters, tenants, namespaces, topics, and more"
+---
+
+## Introduction
+
+The Pulsar Admin API is a RESTful interface that allows you to manage and monitor all aspects of your Pulsar cluster. It provides comprehensive control over resources including tenants, namespaces, topics, schemas, clusters, and brokers.
+
+## Base URL
+
+The Admin API is available at:
+
+```
+http://<broker-url>:8080/admin/v2/
+```
+
+For secure connections:
+
+```
+https://<broker-url>:8443/admin/v2/
+```
+
+## API Version
+
+This documentation covers **Admin API v2**, which is the current stable version. All endpoints are prefixed with `/admin/v2/`.
+
+## Authentication
+
+Most Admin API operations require authentication. Pulsar supports multiple authentication mechanisms:
+
+- **Token-based authentication**: Pass JWT tokens via the `Authorization` header
+- **TLS authentication**: Use client certificates
+- **OAuth 2.0**: Authenticate using OAuth tokens
+
+### Example with Token Authentication
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8080/admin/v2/tenants
+```
+
+## Authorization
+
+Admin API operations require specific permissions:
+
+- **Super-user**: Full access to all resources
+- **Tenant admin**: Manage specific tenants and their resources
+- **Namespace permissions**: Control access at the namespace level
+- **Topic permissions**: Fine-grained control over individual topics
+
+## API Resources
+
+The Admin API is organized into the following resource categories:
+
+### Core Resources
+
+<CardGroup cols={2}>
+  <Card title="Tenants" icon="users" href="/admin-api/tenants">
+    Manage multi-tenant organizations and their configurations
+  </Card>
+  
+  <Card title="Namespaces" icon="folder" href="/admin-api/namespaces">
+    Configure namespaces, policies, and resource quotas
+  </Card>
+  
+  <Card title="Topics" icon="message" href="/admin-api/topics">
+    Create and manage persistent and non-persistent topics
+  </Card>
+  
+  <Card title="Schemas" icon="database" href="/admin-api/schemas">
+    Manage schema definitions and compatibility
+  </Card>
+</CardGroup>
+
+### Infrastructure Resources
+
+<CardGroup cols={2}>
+  <Card title="Clusters" icon="server" href="/admin-api/clusters">
+    Configure and monitor Pulsar clusters
+  </Card>
+  
+  <Card title="Brokers" icon="network-wired" href="/admin-api/brokers">
+    Monitor and manage broker nodes
+  </Card>
+</CardGroup>
+
+## Common Response Codes
+
+The Admin API uses standard HTTP status codes:
+
+| Code | Meaning | Description |
+|------|---------|-------------|
+| 200 | OK | Request successful |
+| 204 | No Content | Operation successful, no response body |
+| 307 | Temporary Redirect | Request redirected to the correct broker |
+| 400 | Bad Request | Invalid request parameters |
+| 401 | Unauthorized | Authentication required |
+| 403 | Forbidden | Insufficient permissions |
+| 404 | Not Found | Resource doesn't exist |
+| 409 | Conflict | Resource already exists |
+| 412 | Precondition Failed | Validation failed |
+| 500 | Internal Server Error | Server error |
+| 503 | Service Unavailable | Service temporarily unavailable |
+
+## Error Responses
+
+Error responses include a JSON body with details:
+
+```json
+{
+  "reason": "Namespace already exists",
+  "message": "Namespace public/default already exists"
+}
+```
+
+## Rate Limiting
+
+Admin API requests may be rate-limited based on your cluster configuration. Check the following headers in responses:
+
+- `X-RateLimit-Limit`: Maximum requests allowed
+- `X-RateLimit-Remaining`: Remaining requests in current window
+- `X-RateLimit-Reset`: Time when the limit resets
+
+## Async Operations
+
+Many Admin API operations are asynchronous. For long-running operations:
+
+1. The API returns immediately with a 202 (Accepted) status
+2. Poll the operation status using the provided status endpoint
+3. The operation completes with success or failure
+
+## Client Libraries
+
+Instead of using the REST API directly, you can use Pulsar's admin clients:
+
+<CodeGroup>
+```java Java
+PulsarAdmin admin = PulsarAdmin.builder()
+    .serviceHttpUrl("http://localhost:8080")
+    .authentication(AuthenticationFactory.token(token))
+    .build();
+
+// List tenants
+List<String> tenants = admin.tenants().getTenants();
+```
+
+```python Python
+from pulsar import Client, AuthenticationToken
+
+admin = Client("http://localhost:8080",
+               authentication=AuthenticationToken(token))
+
+# List tenants
+tenants = admin.tenants().get_tenants()
+```
+
+```go Go
+import "github.com/apache/pulsar-client-go/pulsaradmin"
+
+client, err := pulsaradmin.NewClient(&pulsaradmin.Config{
+    WebServiceURL: "http://localhost:8080",
+})
+
+// List tenants
+tenants, err := client.Tenants().List()
+```
+</CodeGroup>
+
+## Best Practices
+
+### Use Async Operations
+
+For operations that may take time (like creating partitioned topics), use async endpoints when available.
+
+### Handle Redirects
+
+The API may return 307 redirects when a broker doesn't serve a particular resource. Ensure your client follows redirects.
+
+### Implement Retry Logic
+
+Implement exponential backoff for transient errors (5xx responses).
+
+### Cache Responses
+
+Cache configuration data that doesn't change frequently to reduce API load.
+
+### Use Bulk Operations
+
+When available, use bulk endpoints instead of making multiple individual requests.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Manage Tenants" icon="users" href="/admin-api/tenants">
+    Learn how to create and configure tenants
+  </Card>
+  
+  <Card title="Configure Namespaces" icon="folder" href="/admin-api/namespaces">
+    Set up namespaces with policies and quotas
+  </Card>
+  
+  <Card title="Work with Topics" icon="message" href="/admin-api/topics">
+    Create and manage topics and subscriptions
+  </Card>
+  
+  <Card title="Manage Schemas" icon="database" href="/admin-api/schemas">
+    Define and enforce schema compatibility
+  </Card>
+</CardGroup>

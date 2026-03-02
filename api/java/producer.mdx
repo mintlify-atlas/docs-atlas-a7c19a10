@@ -1,0 +1,418 @@
+---
+title: Producer
+description: Publish messages to Pulsar topics
+---
+
+## Overview
+
+The `Producer` interface is used to publish messages on a topic. A single producer instance can be used across multiple threads.
+
+## Creating a Producer
+
+```java
+Producer<String> producer = client.newProducer(Schema.STRING)
+    .topic("my-topic")
+    .create();
+```
+
+## Core Methods
+
+### getTopic()
+
+Return the topic which producer is publishing to.
+
+```java
+String getTopic()
+```
+
+<ParamField path="Returns" type="String">
+  The topic name
+</ParamField>
+
+**Example:**
+```java
+String topic = producer.getTopic();
+System.out.println("Publishing to: " + topic);
+```
+
+### getProducerName()
+
+Return the producer name which could have been assigned by the system or specified by the client.
+
+```java
+String getProducerName()
+```
+
+<ParamField path="Returns" type="String">
+  The producer name
+</ParamField>
+
+## Sending Messages
+
+### send()
+
+Sends a message synchronously.
+
+```java
+MessageId send(T message) throws PulsarClientException
+```
+
+<ParamField path="message" type="T" required>
+  A message
+</ParamField>
+
+<ParamField path="Returns" type="MessageId">
+  The message id assigned to the published message
+</ParamField>
+
+This call will be blocking until it is successfully acknowledged by the Pulsar broker. Use `newMessage()` to specify more properties than just the value on the message to be sent.
+
+**Example:**
+```java
+MessageId msgId = producer.send("Hello Pulsar".getBytes());
+System.out.println("Message published with ID: " + msgId);
+```
+
+**Exceptions:**
+- `PulsarClientException.TimeoutException` - if the message was not correctly received by the system within the timeout period
+- `PulsarClientException.AlreadyClosedException` - if the producer was already closed
+
+### sendAsync()
+
+Send a message asynchronously.
+
+```java
+CompletableFuture<MessageId> sendAsync(T message)
+```
+
+<ParamField path="message" type="T" required>
+  A byte array with the payload of the message
+</ParamField>
+
+<ParamField path="Returns" type="CompletableFuture<MessageId>">
+  A future that can be used to track when the message will have been safely persisted
+</ParamField>
+
+When the producer queue is full, by default this method will complete the future with an exception `PulsarClientException.ProducerQueueIsFullError`.
+
+**Example:**
+```java
+CompletableFuture<MessageId> future = producer.sendAsync("hello".getBytes());
+future.thenAccept(msgId -> {
+    System.out.println("Message published: " + msgId);
+});
+```
+
+<Warning>
+The returned future is completed in the internal network I/O thread. If a callback that takes a long time to complete is registered on the future, it can negatively impact the internal network processing. Use async variants like `thenAcceptAsync()` with an executor to avoid blocking the I/O thread.
+</Warning>
+
+**Avoid deadlocks:**
+```java
+// DON'T do this - causes deadlock
+producer.sendAsync("msg-1".getBytes())
+    .thenAccept(__ -> producer.send("msg-2".getBytes()));
+
+// DO this instead
+producer.sendAsync("msg-1".getBytes())
+    .thenAcceptAsync(__ -> {
+        try {
+            producer.send("msg-2".getBytes());
+        } catch (Exception e) {
+            // handle error
+        }
+    }, executor);
+```
+
+## Message Builder
+
+### newMessage()
+
+Create a new message builder.
+
+```java
+TypedMessageBuilder<T> newMessage()
+```
+
+<ParamField path="Returns" type="TypedMessageBuilder<T>">
+  A typed message builder that can be used to construct the message to be sent through this producer
+</ParamField>
+
+This message builder allows to specify additional properties on the message.
+
+**Example:**
+```java
+producer.newMessage()
+    .key(messageKey)
+    .value(myValue)
+    .property("user-defined-property", "value")
+    .send();
+```
+
+### newMessage(Schema)
+
+Create a new message builder with schema, not required same parameterized type with the producer.
+
+```java
+<V> TypedMessageBuilder<V> newMessage(Schema<V> schema)
+```
+
+<ParamField path="schema" type="Schema<V>">
+  The schema to use for this message
+</ParamField>
+
+<ParamField path="Returns" type="TypedMessageBuilder<V>">
+  A typed message builder with the specified schema
+</ParamField>
+
+### newMessage(Transaction)
+
+Create a new message builder with transaction.
+
+```java
+TypedMessageBuilder<T> newMessage(Transaction txn)
+```
+
+<ParamField path="txn" type="Transaction">
+  The transaction context
+</ParamField>
+
+<ParamField path="Returns" type="TypedMessageBuilder<T>">
+  A typed message builder with transaction support
+</ParamField>
+
+After the transaction commit, it will be made visible to consumer. After the transaction abort, it will never be visible to consumer.
+
+### newMessage(Schema, Transaction)
+
+Create a new message builder with transaction and schema.
+
+```java
+<V> TypedMessageBuilder<V> newMessage(Schema<V> schema, Transaction txn)
+```
+
+<ParamField path="schema" type="Schema<V>">
+  The schema to use for this message
+</ParamField>
+
+<ParamField path="txn" type="Transaction">
+  The transaction context
+</ParamField>
+
+<ParamField path="Returns" type="TypedMessageBuilder<V>">
+  A typed message builder with schema and transaction support
+</ParamField>
+
+## Flush Operations
+
+### flush()
+
+Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
+
+```java
+void flush() throws PulsarClientException
+```
+
+**Example:**
+```java
+producer.sendAsync("message-1".getBytes());
+producer.sendAsync("message-2".getBytes());
+producer.flush(); // Wait for all messages to be persisted
+```
+
+### flushAsync()
+
+Flush all the messages buffered in the client asynchronously.
+
+```java
+CompletableFuture<Void> flushAsync()
+```
+
+<ParamField path="Returns" type="CompletableFuture<Void>">
+  A future that can be used to track when all the messages have been safely persisted
+</ParamField>
+
+**Example:**
+```java
+producer.sendAsync("message-1".getBytes());
+producer.sendAsync("message-2".getBytes());
+producer.flushAsync().thenRun(() -> {
+    System.out.println("All messages flushed");
+});
+```
+
+## Sequence and Statistics
+
+### getLastSequenceId()
+
+Get the last sequence id that was published by this producer.
+
+```java
+long getLastSequenceId()
+```
+
+<ParamField path="Returns" type="long">
+  The last sequence id published by this producer
+</ParamField>
+
+This represents either the automatically assigned or custom sequence id (set on the `TypedMessageBuilder`) that was published and acknowledged by the broker.
+
+After recreating a producer with the same producer name, this will return the last message that was published in the previous producer session, or -1 if no message was ever published.
+
+### getStats()
+
+Get statistics for the producer.
+
+```java
+ProducerStats getStats()
+```
+
+<ParamField path="Returns" type="ProducerStats">
+  Statistic for the producer or null if ProducerStatsRecorderImpl is disabled
+</ParamField>
+
+**Statistics include:**
+- `numMsgsSent` - Number of messages sent in the current interval
+- `numBytesSent` - Number of bytes sent in the current interval
+- `numSendFailed` - Number of messages failed to send in the current interval
+- `numAcksReceived` - Number of acks received in the current interval
+- `totalMsgsSent` - Total number of messages sent
+- `totalBytesSent` - Total number of bytes sent
+- `totalSendFailed` - Total number of messages failed to send
+- `totalAcksReceived` - Total number of acks received
+
+## Connection Management
+
+### isConnected()
+
+Check whether the producer is currently connected to the broker.
+
+```java
+boolean isConnected()
+```
+
+<ParamField path="Returns" type="boolean">
+  True if connected to the broker, false otherwise
+</ParamField>
+
+### getLastDisconnectedTimestamp()
+
+Get the last disconnected timestamp of the producer.
+
+```java
+long getLastDisconnectedTimestamp()
+```
+
+<ParamField path="Returns" type="long">
+  The last disconnected timestamp in milliseconds
+</ParamField>
+
+### getNumOfPartitions()
+
+Get the number of partitions per topic.
+
+```java
+int getNumOfPartitions()
+```
+
+<ParamField path="Returns" type="int">
+  The number of partitions
+</ParamField>
+
+## Closing the Producer
+
+### close()
+
+Close the producer and releases resources allocated.
+
+```java
+void close() throws PulsarClientException
+```
+
+No more writes will be accepted from this producer. Waits until all pending write requests are persisted. In case of errors, pending writes will not be retried.
+
+**Example:**
+```java
+try {
+    producer.close();
+    System.out.println("Producer closed successfully");
+} catch (PulsarClientException e) {
+    System.err.println("Failed to close producer: " + e.getMessage());
+}
+```
+
+**Exceptions:**
+- `PulsarClientException.AlreadyClosedException` - if the producer was already closed
+
+### closeAsync()
+
+Close the producer asynchronously.
+
+```java
+CompletableFuture<Void> closeAsync()
+```
+
+<ParamField path="Returns" type="CompletableFuture<Void>">
+  A future that can be used to track when the producer has been closed
+</ParamField>
+
+**Example:**
+```java
+producer.closeAsync().thenRun(() -> {
+    System.out.println("Producer closed successfully");
+}).exceptionally(ex -> {
+    System.err.println("Failed to close producer: " + ex.getMessage());
+    return null;
+});
+```
+
+## Complete Example
+
+```java
+import org.apache.pulsar.client.api.*;
+
+public class ProducerExample {
+    public static void main(String[] args) throws Exception {
+        // Create client
+        PulsarClient client = PulsarClient.builder()
+            .serviceUrl("pulsar://localhost:6650")
+            .build();
+
+        // Create producer
+        Producer<byte[]> producer = client.newProducer()
+            .topic("my-topic")
+            .create();
+
+        // Send messages synchronously
+        for (int i = 0; i < 10; i++) {
+            String message = "Message-" + i;
+            MessageId msgId = producer.send(message.getBytes());
+            System.out.println("Published message: " + msgId);
+        }
+
+        // Send messages asynchronously
+        for (int i = 0; i < 10; i++) {
+            String message = "Async-Message-" + i;
+            producer.sendAsync(message.getBytes())
+                .thenAccept(msgId -> {
+                    System.out.println("Published async message: " + msgId);
+                })
+                .exceptionally(ex -> {
+                    System.err.println("Failed to publish: " + ex);
+                    return null;
+                });
+        }
+
+        // Send with properties
+        producer.newMessage()
+            .key("my-key")
+            .value("my-value".getBytes())
+            .property("custom-prop", "custom-value")
+            .send();
+
+        // Clean up
+        producer.close();
+        client.close();
+    }
+}
+```

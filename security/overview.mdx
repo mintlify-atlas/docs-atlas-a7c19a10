@@ -1,0 +1,225 @@
+---
+title: Security Overview
+description: Overview of Apache Pulsar security features including authentication, authorization, and encryption
+---
+
+Apache Pulsar provides enterprise-grade security features to protect your messaging infrastructure. This section covers the core security capabilities available in Pulsar.
+
+## Security Features
+
+Pulsar's security model includes three main pillars:
+
+### Authentication
+
+Verify the identity of clients connecting to your Pulsar cluster. Pulsar supports multiple authentication mechanisms:
+
+- **Athenz** - Yahoo's role-based authentication and authorization system
+- **SASL/Kerberos** - Industry-standard authentication for enterprise environments
+- **OpenID Connect (OIDC)** - Modern token-based authentication with JWT
+- **TLS Client Certificates** - Mutual TLS authentication
+- **Token Authentication** - JWT-based authentication with shared secrets
+
+See [Authentication](/security/authentication) for detailed configuration.
+
+### Authorization
+
+Control access to Pulsar resources once clients are authenticated. Authorization in Pulsar allows you to:
+
+- Define super-user roles with full administrative privileges
+- Grant granular permissions on tenants, namespaces, and topics
+- Implement role-based access control (RBAC)
+- Use wildcard matching for flexible permission rules
+
+See [Authorization](/security/authorization) for detailed configuration.
+
+### Encryption
+
+Protect data in transit and at rest:
+
+- **TLS/SSL Encryption** - Encrypt all network communication
+- **End-to-End Encryption** - Application-level message encryption
+- **Certificate Management** - Support for certificate rotation and validation
+
+See [Encryption](/security/encryption) for detailed configuration.
+
+## Security Architecture
+
+Pulsar's security architecture operates at multiple layers:
+
+```
+┌─────────────────────────────────────────┐
+│           Client Application            │
+└─────────────────┬───────────────────────┘
+                  │ Authentication
+                  │ (TLS + Auth Plugin)
+                  ▼
+┌─────────────────────────────────────────┐
+│            Pulsar Proxy                 │
+│         (Optional Gateway)              │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────┐
+│            Pulsar Broker                │
+│  • Authentication Provider              │
+│  • Authorization Provider               │
+│  • TLS Termination                      │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────┐
+│        BookKeeper (Storage)             │
+│         (Optional TLS)                  │
+└─────────────────────────────────────────┘
+```
+
+## Common Configuration Properties
+
+<Warning>
+Always enable both authentication and authorization in production environments. Running Pulsar without security allows unrestricted access to all resources.
+</Warning>
+
+### Broker Configuration
+
+Core security settings in `broker.conf`:
+
+```properties
+# Enable authentication
+authenticationEnabled=true
+
+# Authentication providers (comma-separated)
+authenticationProviders=org.apache.pulsar.broker.authentication.AuthenticationProviderTls
+
+# Enable authorization
+authorizationEnabled=true
+
+# Authorization provider
+authorizationProvider=org.apache.pulsar.broker.authorization.PulsarAuthorizationProvider
+
+# Super user roles
+superUserRoles=admin,superuser
+```
+
+### Client Configuration
+
+Clients must be configured to authenticate:
+
+```java
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar+ssl://broker.example.com:6651")
+    .authentication(
+        AuthenticationFactory.create(
+            "org.apache.pulsar.client.impl.auth.AuthenticationTls",
+            authParams
+        )
+    )
+    .build();
+```
+
+## Security Best Practices
+
+<Warning>
+Follow these security best practices to protect your Pulsar deployment:
+</Warning>
+
+### 1. Enable TLS Everywhere
+
+- Use TLS for all broker-to-broker communication
+- Enable TLS for client-to-broker connections
+- Configure TLS between brokers and BookKeeper
+- Use TLS 1.2 or higher (TLS 1.3 recommended)
+
+### 2. Use Strong Authentication
+
+- Never run production clusters without authentication
+- Rotate credentials regularly
+- Use certificate-based authentication when possible
+- Implement proper secret management for tokens and keys
+
+### 3. Apply Principle of Least Privilege
+
+- Limit super-user roles to essential administrators only
+- Grant minimal permissions required for each client
+- Use namespace-level isolation for different teams
+- Regularly audit role assignments
+
+### 4. Secure Configuration Files
+
+```bash
+# Restrict permissions on configuration files
+chmod 600 /path/to/broker.conf
+chown pulsar:pulsar /path/to/broker.conf
+
+# Protect certificate and key files
+chmod 600 /path/to/certs/*.key
+chmod 644 /path/to/certs/*.crt
+```
+
+### 5. Enable Hostname Verification
+
+```properties
+# In broker.conf
+tlsHostnameVerificationEnabled=true
+tlsRequireTrustedClientCertOnConnect=true
+```
+
+### 6. Monitor Authentication Failures
+
+- Enable authentication metrics
+- Set up alerts for repeated authentication failures
+- Monitor for unusual access patterns
+- Log all authorization denials
+
+## Role-Based Security Model
+
+Pulsar implements a hierarchical security model:
+
+### Resource Hierarchy
+
+```
+Cluster
+  └─ Tenant
+      └─ Namespace
+          └─ Topic
+              ├─ Producer
+              └─ Consumer
+```
+
+### Permission Levels
+
+- **Super Users** - Full access to all operations
+- **Tenant Admins** - Manage all namespaces within a tenant
+- **Namespace Producers** - Publish messages to topics
+- **Namespace Consumers** - Subscribe and consume messages
+- **Function Workers** - Execute Pulsar Functions
+
+## Security Metrics
+
+Pulsar exposes security-related metrics:
+
+- `pulsar_authentication_success_count` - Successful authentications
+- `pulsar_authentication_failures_count` - Failed authentication attempts
+- `pulsar_authorization_success_count` - Successful authorization checks
+- `pulsar_authorization_failures_count` - Failed authorization attempts
+
+These metrics are available via the `/metrics` endpoint and can be exported to monitoring systems like Prometheus.
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Authentication" icon="key" href="/security/authentication">
+    Configure authentication providers
+  </Card>
+  <Card title="Authorization" icon="shield" href="/security/authorization">
+    Set up access control policies
+  </Card>
+  <Card title="Encryption" icon="lock" href="/security/encryption">
+    Enable TLS and encryption
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- [Apache Pulsar Security Documentation](https://pulsar.apache.org/docs/security-overview/)
+- [TLS Certificate Generation](https://pulsar.apache.org/docs/security-tls-transport/)
+- [Pulsar Admin API Security](https://pulsar.apache.org/admin-rest-api/)

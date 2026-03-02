@@ -1,0 +1,780 @@
+---
+title: Schema
+description: Message schema definition for serialization and deserialization
+---
+
+## Overview
+
+The `Schema` interface defines how messages are serialized and deserialized in Pulsar. It provides type-safe message encoding and decoding, enabling producers and consumers to work with structured data types instead of raw bytes.
+
+## Core Methods
+
+### encode()
+
+Encode an object representing the message content into a byte array.
+
+```java
+byte[] encode(T message)
+```
+
+<ParamField path="message" type="T">
+  The message object
+</ParamField>
+
+<ParamField path="Returns" type="byte[]">
+  A byte array with the serialized content
+</ParamField>
+
+**Throws:** `SchemaSerializationException` if the serialization fails
+
+### encode(topic, message)
+
+Encode a message for a specific topic.
+
+```java
+default EncodeData encode(String topic, T message)
+```
+
+<ParamField path="topic" type="String">
+  The topic name
+</ParamField>
+
+<ParamField path="message" type="T">
+  The message object
+</ParamField>
+
+<ParamField path="Returns" type="EncodeData">
+  Encoded data wrapper
+</ParamField>
+
+### decode()
+
+Decode a byte array into an object using the schema definition and deserializer implementation.
+
+```java
+default T decode(byte[] bytes)
+```
+
+<ParamField path="bytes" type="byte[]">
+  The byte array to decode
+</ParamField>
+
+<ParamField path="Returns" type="T">
+  The deserialized object
+</ParamField>
+
+### decode(bytes, schemaVersion)
+
+Decode a byte array into an object using a given version.
+
+```java
+default T decode(byte[] bytes, byte[] schemaVersion)
+```
+
+<ParamField path="bytes" type="byte[]">
+  The byte array to decode
+</ParamField>
+
+<ParamField path="schemaVersion" type="byte[]">
+  The schema version to decode the object (null indicates using latest version)
+</ParamField>
+
+<ParamField path="Returns" type="T">
+  The deserialized object
+</ParamField>
+
+### decode(ByteBuffer)
+
+Decode a ByteBuffer into an object.
+
+```java
+default T decode(ByteBuffer data)
+```
+
+<ParamField path="data" type="ByteBuffer">
+  The ByteBuffer to decode
+</ParamField>
+
+<ParamField path="Returns" type="T">
+  The deserialized object
+</ParamField>
+
+### decode(ByteBuffer, schemaVersion)
+
+Decode a ByteBuffer into an object using a given version.
+
+```java
+default T decode(ByteBuffer data, byte[] schemaVersion)
+```
+
+<ParamField path="data" type="ByteBuffer">
+  The ByteBuffer to decode
+</ParamField>
+
+<ParamField path="schemaVersion" type="byte[]">
+  The schema version to decode the object
+</ParamField>
+
+<ParamField path="Returns" type="T">
+  The deserialized object
+</ParamField>
+
+### validate()
+
+Check if the message is a valid object for this schema.
+
+```java
+default void validate(byte[] message)
+```
+
+<ParamField path="message" type="byte[]">
+  The message to verify
+</ParamField>
+
+**Throws:** `SchemaSerializationException` if it is not a valid message
+
+The implementation can choose what its most efficient approach to validate the schema. If the implementation doesn't provide it, it will attempt to use `decode(byte[])` to see if this schema can decode this message.
+
+### getSchemaInfo()
+
+Get an object that represents the Schema associated metadata.
+
+```java
+SchemaInfo getSchemaInfo()
+```
+
+<ParamField path="Returns" type="SchemaInfo">
+  The schema information object
+</ParamField>
+
+### clone()
+
+Duplicate the schema.
+
+```java
+Schema<T> clone()
+```
+
+<ParamField path="Returns" type="Schema<T>">
+  The duplicated schema
+</ParamField>
+
+## Built-in Primitive Schemas
+
+### BYTES
+
+Schema that doesn't perform any encoding on the message payloads. Accepts a byte array and passes it through.
+
+```java
+Schema<byte[]> BYTES
+```
+
+**Example:**
+```java
+Producer<byte[]> producer = client.newProducer(Schema.BYTES)
+    .topic("my-topic")
+    .create();
+
+producer.send("Hello".getBytes());
+```
+
+### BYTEBUFFER
+
+ByteBuffer Schema.
+
+```java
+Schema<ByteBuffer> BYTEBUFFER
+```
+
+### STRING
+
+Schema that can be used to encode/decode messages whose values are String. The payload is encoded with UTF-8.
+
+```java
+Schema<String> STRING
+```
+
+**Example:**
+```java
+Producer<String> producer = client.newProducer(Schema.STRING)
+    .topic("my-topic")
+    .create();
+
+producer.send("Hello Pulsar");
+```
+
+### INT8
+
+INT8 Schema.
+
+```java
+Schema<Byte> INT8
+```
+
+### INT16
+
+INT16 Schema.
+
+```java
+Schema<Short> INT16
+```
+
+### INT32
+
+INT32 Schema.
+
+```java
+Schema<Integer> INT32
+```
+
+**Example:**
+```java
+Producer<Integer> producer = client.newProducer(Schema.INT32)
+    .topic("my-numbers")
+    .create();
+
+producer.send(42);
+```
+
+### INT64
+
+INT64 Schema.
+
+```java
+Schema<Long> INT64
+```
+
+### BOOL
+
+Boolean Schema.
+
+```java
+Schema<Boolean> BOOL
+```
+
+### FLOAT
+
+Float Schema.
+
+```java
+Schema<Float> FLOAT
+```
+
+### DOUBLE
+
+Double Schema.
+
+```java
+Schema<Double> DOUBLE
+```
+
+### DATE
+
+Date Schema.
+
+```java
+Schema<Date> DATE
+```
+
+### TIME
+
+Time Schema.
+
+```java
+Schema<Time> TIME
+```
+
+### TIMESTAMP
+
+Timestamp Schema.
+
+```java
+Schema<Timestamp> TIMESTAMP
+```
+
+### INSTANT
+
+Instant Schema.
+
+```java
+Schema<Instant> INSTANT
+```
+
+### LOCAL_DATE
+
+LocalDate Schema.
+
+```java
+Schema<LocalDate> LOCAL_DATE
+```
+
+### LOCAL_TIME
+
+LocalTime Schema.
+
+```java
+Schema<LocalTime> LOCAL_TIME
+```
+
+### LOCAL_DATE_TIME
+
+LocalDateTime Schema.
+
+```java
+Schema<LocalDateTime> LOCAL_DATE_TIME
+```
+
+## Structured Schemas
+
+### AVRO(Class)
+
+Create an Avro schema type by default configuration of the class.
+
+```java
+static <T> Schema<T> AVRO(Class<T> pojo)
+```
+
+<ParamField path="pojo" type="Class<T>">
+  The POJO class to be used to extract the Avro schema
+</ParamField>
+
+<ParamField path="Returns" type="Schema<T>">
+  A Schema instance
+</ParamField>
+
+**Example:**
+```java
+public class User {
+    public String name;
+    public int age;
+}
+
+Producer<User> producer = client.newProducer(Schema.AVRO(User.class))
+    .topic("users")
+    .create();
+
+User user = new User();
+user.name = "John";
+user.age = 30;
+producer.send(user);
+```
+
+### AVRO(SchemaDefinition)
+
+Create an Avro schema type with schema definition.
+
+```java
+static <T> Schema<T> AVRO(SchemaDefinition<T> schemaDefinition)
+```
+
+<ParamField path="schemaDefinition" type="SchemaDefinition<T>">
+  The definition of the schema
+</ParamField>
+
+<ParamField path="Returns" type="Schema<T>">
+  A Schema instance
+</ParamField>
+
+### JSON(Class)
+
+Create a JSON schema type by extracting the fields of the specified class.
+
+```java
+static <T> Schema<T> JSON(Class<T> pojo)
+```
+
+<ParamField path="pojo" type="Class<T>">
+  The POJO class to be used to extract the JSON schema
+</ParamField>
+
+<ParamField path="Returns" type="Schema<T>">
+  A Schema instance
+</ParamField>
+
+**Example:**
+```java
+Producer<User> producer = client.newProducer(Schema.JSON(User.class))
+    .topic("users-json")
+    .create();
+
+producer.send(new User("Alice", 25));
+```
+
+### JSON(SchemaDefinition)
+
+Create a JSON schema type with schema definition.
+
+```java
+static <T> Schema<T> JSON(SchemaDefinition schemaDefinition)
+```
+
+<ParamField path="schemaDefinition" type="SchemaDefinition">
+  The definition of the schema
+</ParamField>
+
+<ParamField path="Returns" type="Schema<T>">
+  A Schema instance
+</ParamField>
+
+### PROTOBUF(Class)
+
+Create a Protobuf schema type by extracting the fields of the specified class.
+
+```java
+static <T extends com.google.protobuf.Message> Schema<T> PROTOBUF(Class<T> clazz)
+```
+
+<ParamField path="clazz" type="Class<T>">
+  The Protobuf generated class to be used to extract the schema
+</ParamField>
+
+<ParamField path="Returns" type="Schema<T>">
+  A Schema instance
+</ParamField>
+
+**Example:**
+```java
+// Assuming you have a protobuf generated class MyMessage
+Producer<MyMessage> producer = client.newProducer(Schema.PROTOBUF(MyMessage.class))
+    .topic("protobuf-topic")
+    .create();
+
+MyMessage msg = MyMessage.newBuilder()
+    .setName("test")
+    .setValue(123)
+    .build();
+producer.send(msg);
+```
+
+### PROTOBUF(SchemaDefinition)
+
+Create a Protobuf schema type with schema definition.
+
+```java
+static <T extends com.google.protobuf.Message> Schema<T> PROTOBUF(SchemaDefinition<T> schemaDefinition)
+```
+
+### PROTOBUF_NATIVE(Class)
+
+Create a Protobuf-Native schema type by extracting the fields of the specified class.
+
+```java
+static <T extends com.google.protobuf.Message> Schema<T> PROTOBUF_NATIVE(Class<T> clazz)
+```
+
+### PROTOBUF_NATIVE(SchemaDefinition)
+
+Create a Protobuf-Native schema type with schema definition.
+
+```java
+static <T extends com.google.protobuf.Message> Schema<T> PROTOBUF_NATIVE(SchemaDefinition<T> schemaDefinition)
+```
+
+## KeyValue Schemas
+
+### KeyValue(Class, Class, SchemaType)
+
+Key Value Schema using passed in schema type.
+
+```java
+static <K, V> Schema<KeyValue<K, V>> KeyValue(Class<K> key, Class<V> value, SchemaType type)
+```
+
+<ParamField path="key" type="Class<K>">
+  The key class
+</ParamField>
+
+<ParamField path="value" type="Class<V>">
+  The value class
+</ParamField>
+
+<ParamField path="type" type="SchemaType">
+  The schema type (supports JSON and AVRO)
+</ParamField>
+
+<ParamField path="Returns" type="Schema<KeyValue<K, V>>">
+  A KeyValue Schema instance
+</ParamField>
+
+**Example:**
+```java
+Schema<KeyValue<String, Integer>> kvSchema = 
+    Schema.KeyValue(String.class, Integer.class, SchemaType.JSON);
+
+Producer<KeyValue<String, Integer>> producer = client.newProducer(kvSchema)
+    .topic("kv-topic")
+    .create();
+
+producer.send(new KeyValue<>("user-123", 100));
+```
+
+### KeyValue(Class, Class)
+
+Key Value Schema whose underneath key and value schemas are JSONSchema.
+
+```java
+static <K, V> Schema<KeyValue<K, V>> KeyValue(Class<K> key, Class<V> value)
+```
+
+### KeyValue(Schema, Schema)
+
+Key Value Schema using passed in key and value schemas with INLINE encoding type.
+
+```java
+static <K, V> Schema<KeyValue<K, V>> KeyValue(Schema<K> key, Schema<V> value)
+```
+
+<ParamField path="key" type="Schema<K>">
+  The key schema
+</ParamField>
+
+<ParamField path="value" type="Schema<V>">
+  The value schema
+</ParamField>
+
+<ParamField path="Returns" type="Schema<KeyValue<K, V>>">
+  A KeyValue Schema instance
+</ParamField>
+
+### KeyValue(Schema, Schema, KeyValueEncodingType)
+
+Key Value Schema using passed in key, value and encoding type schemas.
+
+```java
+static <K, V> Schema<KeyValue<K, V>> KeyValue(Schema<K> key, Schema<V> value, 
+    KeyValueEncodingType keyValueEncodingType)
+```
+
+<ParamField path="key" type="Schema<K>">
+  The key schema
+</ParamField>
+
+<ParamField path="value" type="Schema<V>">
+  The value schema
+</ParamField>
+
+<ParamField path="keyValueEncodingType" type="KeyValueEncodingType">
+  The encoding type (INLINE or SEPARATED)
+</ParamField>
+
+<ParamField path="Returns" type="Schema<KeyValue<K, V>>">
+  A KeyValue Schema instance
+</ParamField>
+
+**Example:**
+```java
+Schema<KeyValue<String, User>> kvSchema = Schema.KeyValue(
+    Schema.STRING,
+    Schema.JSON(User.class),
+    KeyValueEncodingType.SEPARATED
+);
+```
+
+### KV_BYTES()
+
+Schema that can be used to encode/decode KeyValue with byte arrays.
+
+```java
+static Schema<KeyValue<byte[], byte[]>> KV_BYTES()
+```
+
+<ParamField path="Returns" type="Schema<KeyValue<byte[], byte[]>>">
+  A KeyValue bytes Schema instance
+</ParamField>
+
+## Auto Schema
+
+### AUTO_CONSUME()
+
+Create a schema instance that automatically deserializes messages based on the current topic schema.
+
+```java
+static Schema<GenericRecord> AUTO_CONSUME()
+```
+
+<ParamField path="Returns" type="Schema<GenericRecord>">
+  The auto schema instance
+</ParamField>
+
+The message values are deserialized into a `GenericRecord` object, that extends the `GenericObject` interface.
+
+**Example:**
+```java
+Consumer<GenericRecord> consumer = client.newConsumer(Schema.AUTO_CONSUME())
+    .topic("my-topic")
+    .subscriptionName("my-sub")
+    .subscribe();
+
+Message<GenericRecord> msg = consumer.receive();
+GenericRecord record = msg.getValue();
+String name = (String) record.getField("name");
+Integer age = (Integer) record.getField("age");
+```
+
+### AUTO_PRODUCE_BYTES()
+
+Create a schema instance that accepts a serialized payload and validates it against the topic schema.
+
+```java
+static Schema<byte[]> AUTO_PRODUCE_BYTES()
+```
+
+<ParamField path="Returns" type="Schema<byte[]>">
+  The auto schema instance
+</ParamField>
+
+Currently this is only supported with Avro and JSON schema types. This method can be used when publishing a raw JSON payload, for which the format is known and a POJO class is not available.
+
+### AUTO_PRODUCE_BYTES(Schema)
+
+Create a schema instance that accepts a serialized payload and validates it against the schema specified.
+
+```java
+static Schema<byte[]> AUTO_PRODUCE_BYTES(Schema<?> schema)
+```
+
+<ParamField path="schema" type="Schema<?>">
+  The schema to validate against
+</ParamField>
+
+<ParamField path="Returns" type="Schema<byte[]>">
+  The auto schema instance
+</ParamField>
+
+### NATIVE_AVRO()
+
+Create a schema instance that accepts a serialized Avro payload without validating it against the schema specified.
+
+```java
+static Schema<byte[]> NATIVE_AVRO(Object schema)
+```
+
+<ParamField path="schema" type="Object">
+  The Avro schema
+</ParamField>
+
+<ParamField path="Returns" type="Schema<byte[]>">
+  The auto schema instance
+</ParamField>
+
+It can be useful when migrating data from existing event or message stores.
+
+## Utility Methods
+
+### getSchema()
+
+Get a schema instance from SchemaInfo.
+
+```java
+static Schema<?> getSchema(SchemaInfo schemaInfo)
+```
+
+<ParamField path="schemaInfo" type="SchemaInfo">
+  The schema information
+</ParamField>
+
+<ParamField path="Returns" type="Schema<?>">
+  A schema instance
+</ParamField>
+
+### generic()
+
+Returns a generic schema of existing schema info.
+
+```java
+static GenericSchema<GenericRecord> generic(SchemaInfo schemaInfo)
+```
+
+<ParamField path="schemaInfo" type="SchemaInfo">
+  Schema info
+</ParamField>
+
+<ParamField path="Returns" type="GenericSchema<GenericRecord>">
+  A generic schema instance
+</ParamField>
+
+Only supports AVRO and JSON.
+
+### getNativeSchema()
+
+Return the native schema that is wrapped by Pulsar API.
+
+```java
+default Optional<Object> getNativeSchema()
+```
+
+<ParamField path="Returns" type="Optional<Object>">
+  The internal schema or null if not present
+</ParamField>
+
+For instance with this method you can access the Avro schema.
+
+## Complete Example
+
+```java
+import org.apache.pulsar.client.api.*;
+import org.apache.pulsar.client.api.schema.GenericRecord;
+
+public class SchemaExample {
+    public static void main(String[] args) throws Exception {
+        PulsarClient client = PulsarClient.builder()
+            .serviceUrl("pulsar://localhost:6650")
+            .build();
+
+        // Example 1: Using JSON Schema with POJO
+        Producer<User> jsonProducer = client.newProducer(Schema.JSON(User.class))
+            .topic("users-json")
+            .create();
+
+        jsonProducer.send(new User("Alice", 25));
+
+        // Example 2: Using AVRO Schema
+        Producer<User> avroProducer = client.newProducer(Schema.AVRO(User.class))
+            .topic("users-avro")
+            .create();
+
+        avroProducer.send(new User("Bob", 30));
+
+        // Example 3: Using AUTO_CONSUME to read any schema
+        Consumer<GenericRecord> consumer = client.newConsumer(Schema.AUTO_CONSUME())
+            .topic("users-json")
+            .subscriptionName("my-sub")
+            .subscribe();
+
+        Message<GenericRecord> msg = consumer.receive();
+        GenericRecord record = msg.getValue();
+        System.out.println("Name: " + record.getField("name"));
+        System.out.println("Age: " + record.getField("age"));
+
+        // Example 4: Using KeyValue Schema
+        Schema<KeyValue<String, User>> kvSchema = 
+            Schema.KeyValue(Schema.STRING, Schema.JSON(User.class));
+
+        Producer<KeyValue<String, User>> kvProducer = 
+            client.newProducer(kvSchema)
+                .topic("users-kv")
+                .create();
+
+        kvProducer.send(new KeyValue<>("user-1", new User("Charlie", 35)));
+
+        // Clean up
+        jsonProducer.close();
+        avroProducer.close();
+        kvProducer.close();
+        consumer.close();
+        client.close();
+    }
+
+    static class User {
+        public String name;
+        public int age;
+
+        public User() {}
+
+        public User(String name, int age) {
+            this.name = name;
+            this.age = age;
+        }
+    }
+}
+```

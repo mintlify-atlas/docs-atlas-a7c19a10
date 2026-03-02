@@ -1,0 +1,173 @@
+---
+title: Pulsar Functions Overview
+description: Learn about serverless compute framework in Apache Pulsar
+---
+
+Pulsar Functions is a lightweight compute framework built into Apache Pulsar that enables serverless stream processing. Functions allow you to process messages as they flow through Pulsar topics without managing separate processing clusters.
+
+## What are Pulsar Functions?
+
+Pulsar Functions are simple, lightweight compute processes that:
+
+- Consume messages from one or more Pulsar topics
+- Apply user-defined processing logic to each message
+- Optionally publish results to another topic
+
+Functions abstract away the complexities of message consumption, processing guarantees, and state management, allowing you to focus on business logic.
+
+## Key Features
+
+### Serverless Execution
+
+Deploy functions without managing infrastructure. Pulsar handles scaling, placement, and resource management automatically.
+
+### Multi-Language Support
+
+Write functions in your preferred language:
+
+- Java
+- Python
+- Go
+
+### Built-in State Management
+
+Functions provide simple APIs for stateful processing:
+
+```java
+// Increment a counter
+context.incrCounter("word-count", 1);
+
+// Get counter value
+long count = context.getCounter("word-count");
+
+// Store arbitrary state
+context.putState("key", ByteBuffer.wrap(value));
+```
+
+### Processing Guarantees
+
+Configure delivery semantics based on your requirements:
+
+- **At-most-once**: Message processed zero or one time (fastest)
+- **At-least-once**: Message processed one or more times (default)
+- **Effectively-once**: Message effects applied exactly once (requires state)
+
+## Use Cases
+
+### Stream Filtering
+
+Filter messages based on content or metadata before routing to downstream consumers.
+
+### Data Transformation
+
+Transform message formats, enrich data, or normalize schemas.
+
+### Routing and Aggregation
+
+Route messages to different topics based on content, or aggregate data from multiple sources.
+
+### Event-Driven Workflows
+
+Trigger actions based on specific message patterns or thresholds.
+
+## Simple Function Example
+
+Here's a basic function that appends an exclamation mark to incoming strings:
+
+<CodeGroup>
+```java Java
+package org.apache.pulsar.functions.api.examples;
+
+import org.apache.pulsar.functions.api.Context;
+import org.apache.pulsar.functions.api.Function;
+
+public class ExclamationFunction implements Function<String, String> {
+    @Override
+    public String process(String input, Context context) {
+        return String.format("%s!", input);
+    }
+}
+```
+
+```python Python
+from pulsar import Function
+
+class ExclamationFunction(Function):
+    def __init__(self):
+        pass
+
+    def process(self, input, context):
+        return input + '!'
+```
+
+```go Go
+package main
+
+import (
+    "context"
+    "github.com/apache/pulsar/pulsar-function-go/pf"
+)
+
+func HandleExclamation(ctx context.Context, in []byte) ([]byte, error) {
+    return []byte(string(in) + "!"), nil
+}
+
+func main() {
+    pf.Start(HandleExclamation)
+}
+```
+</CodeGroup>
+
+## Architecture
+
+Pulsar Functions run within the Pulsar cluster and integrate directly with the broker and BookKeeper storage layer:
+
+1. **Function Worker**: Coordinates function deployment and lifecycle
+2. **Function Runtime**: Executes function code (process, thread, or container)
+3. **State Storage**: Persistent state backed by BookKeeper
+4. **Metrics**: Automatic collection of processing metrics
+
+## Function Lifecycle
+
+Functions support initialization and cleanup hooks:
+
+```java
+public class MyFunction implements Function<String, String> {
+    private SomeResource resource;
+    
+    @Override
+    public void initialize(Context context) throws Exception {
+        // Called once when function instance starts
+        resource = new SomeResource();
+    }
+    
+    @Override
+    public String process(String input, Context context) {
+        // Called for each message
+        return resource.transform(input);
+    }
+    
+    @Override
+    public void close() throws Exception {
+        // Called once when function instance stops
+        resource.cleanup();
+    }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Developing Functions" icon="code" href="/functions/developing">
+    Learn how to write and test Pulsar Functions
+  </Card>
+  <Card title="Deploying Functions" icon="rocket" href="/functions/deploying">
+    Deploy and manage functions in production
+  </Card>
+  <Card title="Runtime Configuration" icon="gears" href="/functions/runtime">
+    Configure function runtime and resources
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/functions">
+    Explore the Functions API
+  </Card>
+</CardGroup>

@@ -1,0 +1,365 @@
+---
+title: Topics
+description: Understanding Pulsar topics and naming conventions
+---
+
+Topics are named channels for message transmission in Apache Pulsar. They serve as the fundamental unit of message organization and routing.
+
+## Topic Naming
+
+From `pulsar-common/src/main/java/org/apache/pulsar/common/naming/TopicName.java`, Pulsar topics use a hierarchical naming structure:
+
+```
+{persistent|non-persistent}://tenant/namespace/topic
+```
+
+### Components
+
+<Steps>
+  <Step title="Domain">
+    Either `persistent` or `non-persistent`, determines storage behavior
+  </Step>
+  <Step title="Tenant">
+    The organizational unit, used for multi-tenancy and isolation
+  </Step>
+  <Step title="Namespace">
+    A grouping mechanism within a tenant for applying policies
+  </Step>
+  <Step title="Topic Name">
+    The actual topic identifier (local name)
+  </Step>
+</Steps>
+
+### Examples
+
+```java
+// From TopicName.java implementation
+persistent://my-tenant/my-namespace/my-topic
+persistent://public/default/orders
+non-persistent://acme/analytics/click-stream
+
+// Short form (defaults to persistent://public/default/)
+my-topic
+// Expands to: persistent://public/default/my-topic
+
+// Medium form (defaults to persistent://)
+my-tenant/my-namespace/my-topic
+// Expands to: persistent://my-tenant/my-namespace/my-topic
+```
+
+<Info>
+The `public/default` namespace is created automatically in every Pulsar cluster and is useful for development and testing.
+</Info>
+
+## Topic Types
+
+### Persistent Topics
+
+Messages are durably stored in Apache BookKeeper:
+
+```java
+producer = client.newProducer()
+    .topic("persistent://my-tenant/my-ns/my-topic")
+    .create();
+```
+
+**Characteristics:**
+- Messages stored on disk with configurable replication
+- Survives broker restarts
+- Supports all subscription types
+- Retention policies apply
+- Higher durability, slightly higher latency
+
+### Non-Persistent Topics
+
+Messages are only kept in memory, never persisted:
+
+```java
+producer = client.newProducer()
+    .topic("non-persistent://my-tenant/my-ns/my-topic")
+    .create();
+```
+
+**Characteristics:**
+- No disk I/O, lowest possible latency
+- Messages lost on broker restart
+- If no consumers connected, messages are discarded
+- Useful for high-throughput, loss-tolerant use cases
+
+<Warning>
+Non-persistent topics provide no durability guarantees. Only use them for scenarios where message loss is acceptable, such as sensor data where only the latest reading matters.
+</Warning>
+
+## Partitioned Topics
+
+Partitioned topics allow horizontal scaling by distributing messages across multiple brokers.
+
+### Creating Partitioned Topics
+
+```bash
+# Create a topic with 4 partitions
+pulsar-admin topics create-partitioned-topic \
+  persistent://my-tenant/my-ns/my-topic \
+  --partitions 4
+```
+
+### How Partitions Work
+
+From the source code, partitioned topics are logical constructs:
+
+```java
+// From TopicName.java
+// Partition naming: {topic}-partition-{index}
+persistent://tenant/ns/my-topic-partition-0
+persistent://tenant/ns/my-topic-partition-1
+persistent://tenant/ns/my-topic-partition-2
+persistent://tenant/ns/my-topic-partition-3
+```
+
+<Info>
+Each partition is actually a separate internal topic. Pulsar clients automatically handle routing messages to the correct partition.
+</Info>
+
+### Message Routing to Partitions
+
+Producers use different strategies to route messages:
+
+```java
+// 1. Key-based routing (default)
+producer.newMessage()
+    .key("user-123")
+    .value(data)
+    .send();
+// Messages with same key always go to same partition
+
+// 2. Round-robin (no key specified)
+producer.newMessage()
+    .value(data)
+    .send();
+// Distributes evenly across partitions
+
+// 3. Custom routing
+MessageRouter customRouter = new MessageRouter() {
+    @Override
+    public int choosePartition(Message<?> msg, TopicMetadata metadata) {
+        // Custom logic to select partition
+        return calculatePartition(msg);
+    }
+};
+
+producer = client.newProducer()
+    .topic("persistent://tenant/ns/my-topic")
+    .messageRouter(customRouter)
+    .create();
+```
+
+### Consumer Behavior with Partitions
+
+Consumers automatically subscribe to all partitions:
+
+```java
+// Single consumer receives from all partitions
+Consumer<String> consumer = client.newConsumer(Schema.STRING)
+    .topic("persistent://tenant/ns/my-partitioned-topic")
+    .subscriptionName("my-sub")
+    .subscribe();
+```
+
+With multiple consumers, partition assignment depends on subscription type:
+
+- **Exclusive/Failover**: Partitions distributed across consumers
+- **Shared/Key_Shared**: Messages from all partitions distributed
+
+## System Topics
+
+From `pulsar-common/src/main/java/org/apache/pulsar/common/naming/SystemTopicNames.java`, Pulsar uses special system topics:
+
+### Transaction Topics
+
+```java
+// Transaction coordinator topics (internal)
+persistent://pulsar/system/transaction_coordinator_assign
+```
+
+### Schema Topics
+
+```java
+// Schema registry storage (internal)
+persistent://public/default/__schema
+```
+
+### Namespace Event Topics
+
+```java
+// Topic policy changes
+persistent://tenant/namespace/__change_events
+```
+
+<Info>
+System topics are managed automatically by Pulsar. You typically don't need to interact with them directly.
+</Info>
+
+## Topic Management
+
+### Creating Topics
+
+```bash
+# Non-partitioned topic (auto-created on first use)
+pulsar-admin topics create persistent://tenant/ns/topic
+
+# Partitioned topic (must be pre-created)
+pulsar-admin topics create-partitioned-topic \
+  persistent://tenant/ns/topic --partitions 8
+```
+
+### Listing Topics
+
+```bash
+# List all topics in a namespace
+pulsar-admin topics list tenant/namespace
+
+# List partitioned topics only
+pulsar-admin topics list-partitioned-topics tenant/namespace
+```
+
+### Updating Partitions
+
+```bash
+# Increase partition count (cannot decrease)
+pulsar-admin topics update-partitioned-topic \
+  persistent://tenant/ns/topic --partitions 16
+```
+
+<Warning>
+You can only increase partition count, never decrease it. Plan your partition count carefully based on expected throughput.
+</Warning>
+
+### Deleting Topics
+
+```bash
+# Delete a non-partitioned topic
+pulsar-admin topics delete persistent://tenant/ns/topic
+
+# Delete a partitioned topic and all partitions
+pulsar-admin topics delete-partitioned-topic persistent://tenant/ns/topic
+```
+
+## Topic Policies
+
+Topics inherit policies from their namespace but can override them:
+
+### Retention
+
+```bash
+# Set retention at topic level
+pulsar-admin topics set-retention persistent://tenant/ns/topic \
+  --size 20G --time 48h
+```
+
+### Backlog Quotas
+
+```bash
+# Limit backlog size
+pulsar-admin topics set-backlog-quota persistent://tenant/ns/topic \
+  --limit 10G --policy producer_request_hold
+```
+
+### Message TTL
+
+```bash
+# Auto-expire unacknowledged messages after 24 hours
+pulsar-admin topics set-message-ttl persistent://tenant/ns/topic \
+  --messageTTL 86400
+```
+
+## Topic Statistics
+
+Monitor topic health and performance:
+
+```bash
+# Get detailed topic stats
+pulsar-admin topics stats persistent://tenant/ns/topic
+```
+
+Key metrics include:
+- Message rate in/out
+- Throughput in/out (bytes)
+- Storage size
+- Number of subscriptions
+- Backlog size per subscription
+
+## Topic Lookup
+
+From the broker implementation, Pulsar uses a distributed topic lookup mechanism:
+
+1. Client queries any broker for topic location
+2. Broker checks metadata store for topic ownership
+3. If needed, broker redirects client to owning broker
+4. Client connects to correct broker
+
+<Info>
+This lookup mechanism allows Pulsar to distribute topics across all brokers in the cluster, enabling horizontal scaling.
+</Info>
+
+## Topic Compaction
+
+For topics that represent state, compaction keeps only the latest value per key:
+
+```bash
+# Enable automatic compaction
+pulsar-admin topics set-compaction-threshold persistent://tenant/ns/topic \
+  --threshold 100M
+
+# Trigger manual compaction
+pulsar-admin topics compact persistent://tenant/ns/topic
+```
+
+```java
+// Read from compacted view
+Reader<String> reader = client.newReader(Schema.STRING)
+    .topic("persistent://tenant/ns/topic")
+    .readCompacted(true)
+    .startMessageId(MessageId.earliest)
+    .create();
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Choosing Partition Count">
+    - Start with partitions = number of expected consumer instances
+    - Consider broker count (partitions should be >= brokers for distribution)
+    - Each partition adds some overhead; don't over-partition
+    - Plan for growth (you can increase but not decrease)
+  </Accordion>
+  
+  <Accordion title="Topic Naming">
+    - Use descriptive names that indicate content: `orders`, `user-events`
+    - Group related topics in the same namespace
+    - Use consistent naming conventions across your organization
+    - Avoid special characters except hyphens and underscores
+  </Accordion>
+  
+  <Accordion title="Persistent vs Non-Persistent">
+    - Default to persistent topics unless you have specific latency requirements
+    - Use non-persistent only when data loss is acceptable
+    - Consider retention policies with persistent topics to manage storage costs
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Subscriptions" icon="rss" href="/concepts/subscriptions">
+    Learn about subscription types
+  </Card>
+  <Card title="Multi-Tenancy" icon="building" href="/concepts/multi-tenancy">
+    Understand tenant and namespace isolation
+  </Card>
+  <Card title="Messaging" icon="message" href="/concepts/messaging">
+    Explore message delivery semantics
+  </Card>
+  <Card title="Schemas" icon="file-code" href="/concepts/schemas">
+    Learn about schema evolution
+  </Card>
+</CardGroup>

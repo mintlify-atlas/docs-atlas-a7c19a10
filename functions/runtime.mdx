@@ -1,0 +1,574 @@
+---
+title: Function Runtime Configuration
+description: Configure execution modes, resources, and runtime behavior for Pulsar Functions
+---
+
+Pulsar Functions support multiple runtime modes with different isolation, performance, and resource characteristics. This guide covers runtime configuration and optimization.
+
+## Runtime Modes
+
+Pulsar Functions can run in three different modes:
+
+### Thread Mode
+
+Functions run as threads within the Function Worker process.
+
+**Characteristics:**
+- Lowest overhead and fastest startup
+- Shared JVM with Function Worker
+- No isolation between functions
+- Best for lightweight, trusted functions
+
+**Use Cases:**
+- Development and testing
+- Simple transformations
+- Low-latency requirements
+
+```bash
+bin/pulsar-admin functions create \
+    --name thread-function \
+    --jar my-function.jar \
+    --classname com.example.MyFunction \
+    --inputs persistent://public/default/input \
+    --runtime THREAD
+```
+
+### Process Mode
+
+Functions run as separate processes on the same host.
+
+**Characteristics:**
+- Process-level isolation
+- Better resource control
+- Independent failure domains
+- Moderate overhead
+
+**Use Cases:**
+- Production deployments
+- Functions requiring isolation
+- Multi-language support
+
+```bash
+bin/pulsar-admin functions create \
+    --name process-function \
+    --jar my-function.jar \
+    --classname com.example.MyFunction \
+    --inputs persistent://public/default/input \
+    --runtime PROCESS
+```
+
+### Kubernetes Mode
+
+Functions run as Kubernetes pods.
+
+**Characteristics:**
+- Full container isolation
+- Kubernetes resource management
+- Auto-scaling support
+- Cloud-native deployment
+
+**Use Cases:**
+- Large-scale production deployments
+- Multi-tenant environments
+- Functions requiring specific container images
+- Integration with Kubernetes ecosystem
+
+```bash
+bin/pulsar-admin functions create \
+    --name k8s-function \
+    --jar my-function.jar \
+    --classname com.example.MyFunction \
+    --inputs persistent://public/default/input \
+    --runtime KUBERNETES
+```
+
+## Resource Configuration
+
+### CPU Allocation
+
+Specify CPU resources in cores:
+
+```bash
+bin/pulsar-admin functions create \
+    --name my-function \
+    --jar my-function.jar \
+    --classname com.example.MyFunction \
+    --inputs persistent://public/default/input \
+    --cpu 0.5  # Request 0.5 CPU cores
+```
+
+For Kubernetes runtime:
+- Translates to Kubernetes CPU requests
+- Can specify limits separately in function worker config
+
+### Memory Allocation
+
+Specify RAM in bytes:
+
+```bash
+bin/pulsar-admin functions create \
+    --name my-function \
+    --jar my-function.jar \
+    --classname com.example.MyFunction \
+    --inputs persistent://public/default/input \
+    --ram 536870912  # 512 MB in bytes
+```
+
+Memory considerations:
+- Include overhead for runtime and libraries
+- Monitor actual usage and adjust
+- Set appropriate JVM heap size for Java functions
+
+### Disk Allocation
+
+Specify disk space in bytes:
+
+```bash
+bin/pulsar-admin functions create \
+    --name my-function \
+    --jar my-function.jar \
+    --classname com.example.MyFunction \
+    --inputs persistent://public/default/input \
+    --disk 1073741824  # 1 GB in bytes
+```
+
+Disk is used for:
+- Function package and dependencies
+- Local state storage (if enabled)
+- Temporary files
+
+### Complete Resource Configuration
+
+```yaml function-config.yaml
+tenant: "public"
+namespace: "default"
+name: "resource-optimized-function"
+className: "com.example.OptimizedFunction"
+inputs: ["persistent://public/default/input"]
+output: "persistent://public/default/output"
+
+# Resource allocation
+resources:
+  cpu: 1.0
+  ram: 1073741824  # 1 GB
+  disk: 2147483648  # 2 GB
+
+# Runtime configuration
+runtime: KUBERNETES
+parallelism: 3
+```
+
+## Parallelism and Scaling
+
+### Instance Parallelism
+
+Run multiple instances for horizontal scaling:
+
+```bash
+bin/pulsar-admin functions create \
+    --name parallel-function \
+    --jar my-function.jar \
+    --classname com.example.ParallelFunction \
+    --inputs persistent://public/default/input \
+    --parallelism 5
+```
+
+**How It Works:**
+- Each instance processes a subset of input partitions
+- Load balanced automatically by Pulsar
+- Instances can run on different workers
+
+**Scaling Guidelines:**
+- Start with parallelism = number of input topic partitions
+- Increase if instances are CPU-bound
+- Monitor per-instance throughput
+
+### Dynamic Scaling
+
+Update parallelism without redeployment:
+
+```bash
+bin/pulsar-admin functions update \
+    --tenant public \
+    --namespace default \
+    --name my-function \
+    --parallelism 10
+```
+
+## Subscription Configuration
+
+### Subscription Type
+
+Control how messages are distributed across function instances:
+
+```bash
+bin/pulsar-admin functions create \
+    --name my-function \
+    --jar my-function.jar \
+    --classname com.example.MyFunction \
+    --inputs persistent://public/default/input \
+    --subscription-type SHARED  # SHARED, FAILOVER, or KEY_SHARED
+```
+
+**Subscription Types:**
+
+- **SHARED** (default): Messages distributed round-robin across instances
+- **FAILOVER**: Only one instance receives messages; others are standby
+- **KEY_SHARED**: Messages with same key go to same instance
+
+### Subscription Position
+
+Set where to start consuming:
+
+```bash
+bin/pulsar-admin functions create \
+    --name my-function \
+    --jar my-function.jar \
+    --classname com.example.MyFunction \
+    --inputs persistent://public/default/input \
+    --subscription-position EARLIEST  # EARLIEST or LATEST
+```
+
+## Processing Guarantees
+
+### At-Most-Once
+
+Fastest processing, no retries:
+
+```bash
+bin/pulsar-admin functions create \
+    --name fast-function \
+    --jar my-function.jar \
+    --classname com.example.FastFunction \
+    --inputs persistent://public/default/input \
+    --processing-guarantees ATMOST_ONCE \
+    --auto-ack true
+```
+
+**Characteristics:**
+- Message acknowledged immediately before processing
+- No redelivery on failure
+- Lowest latency
+
+### At-Least-Once
+
+Default mode with automatic retries:
+
+```bash
+bin/pulsar-admin functions create \
+    --name reliable-function \
+    --jar my-function.jar \
+    --classname com.example.ReliableFunction \
+    --inputs persistent://public/default/input \
+    --processing-guarantees ATLEAST_ONCE \
+    --max-message-retries 3 \
+    --dead-letter-topic persistent://public/default/dlq
+```
+
+**Characteristics:**
+- Message acknowledged after successful processing
+- Automatic retries on failure
+- Requires idempotent function logic
+
+### Effectively-Once
+
+Exactly-once semantics using state:
+
+```bash
+bin/pulsar-admin functions create \
+    --name exactly-once-function \
+    --jar my-function.jar \
+    --classname com.example.ExactlyOnceFunction \
+    --inputs persistent://public/default/input \
+    --processing-guarantees EFFECTIVELY_ONCE
+```
+
+**Characteristics:**
+- Message processing and state updates are atomic
+- Highest consistency guarantees
+- Higher latency due to coordination
+
+**Requirements:**
+- Function must use Pulsar state storage
+- State updates committed with message acknowledgment
+
+## Timeout Configuration
+
+### Message Timeout
+
+Set maximum processing time per message:
+
+```bash
+bin/pulsar-admin functions create \
+    --name timeout-function \
+    --jar my-function.jar \
+    --classname com.example.TimeoutFunction \
+    --inputs persistent://public/default/input \
+    --timeout-ms 30000  # 30 seconds
+```
+
+If processing exceeds timeout:
+- Message is considered failed
+- Retried based on retry configuration
+
+### Retry Configuration
+
+Configure retry behavior:
+
+```yaml function-config.yaml
+name: "retry-function"
+className: "com.example.RetryFunction"
+inputs: ["persistent://public/default/input"]
+
+# Retry configuration
+maxMessageRetries: 5
+deadLetterTopic: "persistent://public/default/function-dlq"
+timeoutMs: 30000
+```
+
+## State Storage Configuration
+
+### Enable State Storage
+
+Configure state backend:
+
+```yaml stateful-config.yaml
+name: "stateful-function"
+className: "com.example.StatefulFunction"
+inputs: ["persistent://public/default/input"]
+
+# State storage configuration
+statefulConfig:
+  pulsar:
+    # BookKeeper state storage
+    stateStorageServiceUrl: "bk://localhost:4181"
+```
+
+### State Storage Options
+
+**BookKeeper (default):**
+- Integrated with Pulsar cluster
+- High performance, low latency
+- Automatic replication
+
+**External State Store:**
+- Connect to external databases
+- Use for shared state across functions
+- Custom implementation via StateStore interface
+
+## Custom Runtime Options
+
+### JVM Options (Java)
+
+Configure JVM for Java functions:
+
+```yaml java-function-config.yaml
+name: "java-function"
+className: "com.example.JavaFunction"
+inputs: ["persistent://public/default/input"]
+
+# Custom JVM options
+customRuntimeOptions: |
+  -XX:+UseG1GC
+  -XX:MaxGCPauseMillis=100
+  -Xms512m
+  -Xmx1024m
+```
+
+### Environment Variables
+
+Set environment variables for function runtime:
+
+```bash
+bin/pulsar-admin functions create \
+    --name env-function \
+    --jar my-function.jar \
+    --classname com.example.EnvFunction \
+    --inputs persistent://public/default/input \
+    --env '{"LOG_LEVEL":"DEBUG","REGION":"us-west-2"}'
+```
+
+## Kubernetes-Specific Configuration
+
+### Custom Container Image
+
+Use custom Docker image:
+
+```bash
+bin/pulsar-admin functions create \
+    --name k8s-custom-function \
+    --jar my-function.jar \
+    --classname com.example.CustomFunction \
+    --inputs persistent://public/default/input \
+    --runtime KUBERNETES \
+    --custom-runtime-options '{"image":"myregistry/custom-pulsar-function:1.0"}'
+```
+
+### Service Account
+
+Specify Kubernetes service account:
+
+```yaml k8s-function-config.yaml
+name: "k8s-function"
+runtime: KUBERNETES
+className: "com.example.K8sFunction"
+inputs: ["persistent://public/default/input"]
+
+customRuntimeOptions: |
+  {
+    "serviceAccount": "pulsar-function-sa",
+    "labels": {
+      "app": "pulsar-function",
+      "environment": "production"
+    },
+    "annotations": {
+      "prometheus.io/scrape": "true"
+    }
+  }
+```
+
+## Monitoring and Debugging
+
+### Enable Debug Logging
+
+```bash
+bin/pulsar-admin functions create \
+    --name debug-function \
+    --jar my-function.jar \
+    --classname com.example.DebugFunction \
+    --inputs persistent://public/default/input \
+    --log-topic persistent://public/default/function-logs
+```
+
+View debug logs:
+
+```bash
+bin/pulsar-client consume \
+    persistent://public/default/function-logs \
+    --subscription-name log-viewer \
+    --num-messages 0
+```
+
+### Profiling Functions
+
+For Java functions, enable profiling:
+
+```yaml profiling-config.yaml
+name: "profiled-function"
+className: "com.example.ProfiledFunction"
+inputs: ["persistent://public/default/input"]
+
+customRuntimeOptions: |
+  -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005
+  -XX:+FlightRecorder
+  -XX:StartFlightRecording=duration=60s,filename=/tmp/recording.jfr
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Choose the Right Runtime">
+    Use Thread mode for development, Process mode for production, and Kubernetes mode for large-scale or multi-tenant deployments.
+  </Step>
+  
+  <Step title="Right-Size Resources">
+    Monitor actual resource usage and adjust CPU/RAM allocations. Over-provisioning wastes resources; under-provisioning causes failures.
+  </Step>
+  
+  <Step title="Match Parallelism to Load">
+    Start with parallelism equal to the number of input partitions. Increase based on per-instance CPU utilization.
+  </Step>
+  
+  <Step title="Configure Appropriate Guarantees">
+    Use EFFECTIVELY_ONCE only when necessary. ATLEAST_ONCE with idempotent logic is often sufficient and more performant.
+  </Step>
+  
+  <Step title="Set Reasonable Timeouts">
+    Set timeouts based on expected processing time plus buffer. Monitor timeout-related failures.
+  </Step>
+  
+  <Step title="Use Dead Letter Queues">
+    Always configure DLQ for functions with retry limits to prevent message loss.
+  </Step>
+</Steps>
+
+## Performance Tuning
+
+### Optimize Throughput
+
+<CodeGroup>
+```yaml High Throughput
+name: "high-throughput-function"
+parallelism: 10
+processingGuarantees: ATLEAST_ONCE
+resources:
+  cpu: 2.0
+  ram: 2147483648
+autoAck: true
+subscriptionType: SHARED
+```
+
+```yaml Low Latency
+name: "low-latency-function"
+parallelism: 1
+processingGuarantees: ATMOST_ONCE
+runtime: THREAD
+resources:
+  cpu: 0.5
+  ram: 536870912
+autoAck: true
+```
+
+```yaml High Consistency
+name: "consistent-function"
+parallelism: 3
+processingGuarantees: EFFECTIVELY_ONCE
+resources:
+  cpu: 1.0
+  ram: 1073741824
+statefulConfig:
+  pulsar:
+    stateStorageServiceUrl: "bk://localhost:4181"
+```
+</CodeGroup>
+
+## Troubleshooting
+
+### OOM Errors
+
+**Symptoms:** Function instances crash frequently
+
+**Solutions:**
+- Increase `--ram` allocation
+- Optimize function memory usage
+- Check for memory leaks
+
+### High Latency
+
+**Symptoms:** Messages processed slowly
+
+**Solutions:**
+- Increase `--parallelism`
+- Use THREAD or PROCESS runtime instead of KUBERNETES
+- Optimize function code
+- Use async operations
+
+### Function Won't Scale
+
+**Symptoms:** Adding instances doesn't increase throughput
+
+**Solutions:**
+- Increase input topic partitions
+- Check for bottlenecks in function code
+- Verify resource availability on workers
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Function Development" icon="code" href="/functions/developing">
+    Learn advanced development patterns
+  </Card>
+  <Card title="Deployment Guide" icon="rocket" href="/functions/deploying">
+    Explore deployment options
+  </Card>
+</CardGroup>

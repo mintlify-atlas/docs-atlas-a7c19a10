@@ -1,0 +1,944 @@
+---
+title: ClientBuilder
+description: Build and configure a PulsarClient instance
+---
+
+## Overview
+
+The `ClientBuilder` interface is used to configure and construct a `PulsarClient` instance. It provides a fluent API for setting connection parameters, authentication, TLS configuration, threading, and various client behaviors.
+
+## Creating a ClientBuilder
+
+```java
+ClientBuilder builder = PulsarClient.builder()
+    .serviceUrl("pulsar://localhost:6650")
+    .build();
+```
+
+## Core Methods
+
+### build()
+
+Construct the final `PulsarClient` instance.
+
+```java
+PulsarClient build() throws PulsarClientException
+```
+
+<ParamField path="Returns" type="PulsarClient">
+  The new PulsarClient instance
+</ParamField>
+
+**Example:**
+```java
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar://localhost:6650")
+    .build();
+```
+
+### clone()
+
+Create a copy of the current client builder.
+
+```java
+ClientBuilder clone()
+```
+
+Cloning the builder can be used to share an incomplete configuration and specialize it multiple times.
+
+**Example:**
+```java
+ClientBuilder builder = PulsarClient.builder()
+    .ioThreads(8)
+    .listenerThreads(4);
+
+PulsarClient client1 = builder.clone()
+    .serviceUrl("pulsar://localhost:6650").build();
+PulsarClient client2 = builder.clone()
+    .serviceUrl("pulsar://other-host:6650").build();
+```
+
+### loadConf()
+
+Load the configuration from provided config map.
+
+```java
+ClientBuilder loadConf(Map<String, Object> config)
+```
+
+<ParamField path="config" type="Map<String, Object>" required>
+  Configuration map to load
+</ParamField>
+
+**Example:**
+```java
+Map<String, Object> config = new HashMap<>();
+config.put("serviceUrl", "pulsar://localhost:6650");
+config.put("numIoThreads", 20);
+
+ClientBuilder builder = PulsarClient.builder().loadConf(config);
+PulsarClient client = builder.build();
+```
+
+## Connection Configuration
+
+### serviceUrl()
+
+Configure the service URL for the Pulsar service. This parameter is required.
+
+```java
+ClientBuilder serviceUrl(String serviceUrl)
+```
+
+<ParamField path="serviceUrl" type="String" required>
+  The URL of the Pulsar service that the client should connect to
+</ParamField>
+
+**Examples:**
+- `pulsar://my-broker:6650` for regular endpoint
+- `pulsar+ssl://my-broker:6651` for TLS encrypted endpoint
+
+### serviceUrlProvider()
+
+Configure the service URL provider for Pulsar service.
+
+```java
+ClientBuilder serviceUrlProvider(ServiceUrlProvider serviceUrlProvider)
+```
+
+<ParamField path="serviceUrlProvider" type="ServiceUrlProvider">
+  The provider instance that dynamically provides a service URL
+</ParamField>
+
+### listenerName()
+
+Configure the listenerName that the broker will return the corresponding advertisedListener.
+
+```java
+ClientBuilder listenerName(String name)
+```
+
+<ParamField path="name" type="String">
+  The listener name
+</ParamField>
+
+### connectionMaxIdleSeconds()
+
+Release the connection if it is not used for more than specified seconds. Defaults to 25 seconds.
+
+```java
+ClientBuilder connectionMaxIdleSeconds(int connectionMaxIdleSeconds)
+```
+
+<ParamField path="connectionMaxIdleSeconds" type="int">
+  Maximum idle time in seconds
+</ParamField>
+
+### connectionTimeout()
+
+Set the duration of time to wait for a connection to a broker to be established.
+
+```java
+ClientBuilder connectionTimeout(int duration, TimeUnit unit)
+```
+
+<ParamField path="duration" type="int">
+  The duration to wait
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  The time unit in which the duration is defined
+</ParamField>
+
+### connectionsPerBroker()
+
+Sets the max number of connections that the client library will open to a single broker.
+
+```java
+ClientBuilder connectionsPerBroker(int connectionsPerBroker)
+```
+
+<ParamField path="connectionsPerBroker" type="int">
+  Max number of connections per broker (needs to be greater than or equal to 0)
+</ParamField>
+
+By default, the connection pool will use a single connection for all the producers and consumers. Increasing this parameter may improve throughput when using many producers over a high latency connection.
+
+## Authentication
+
+### authentication(Authentication)
+
+Set the authentication provider to use in the Pulsar client instance.
+
+```java
+ClientBuilder authentication(Authentication authentication)
+```
+
+<ParamField path="authentication" type="Authentication">
+  An instance of the Authentication provider already constructed
+</ParamField>
+
+**Example with TLS:**
+```java
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar+ssl://broker.example.com:6651/")
+    .authentication(
+        AuthenticationFactory.TLS("/my/cert/file", "/my/key/file")
+    )
+    .build();
+```
+
+**Example with Token:**
+```java
+Authentication auth = AuthenticationFactory.token(
+    "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJKb2UifQ.ipevRNuRP6HflG8cFKnmUPtypruRC4fb1DWtoLL62SY"
+);
+```
+
+### authentication(String, String)
+
+Configure the authentication provider to use in the Pulsar client instance.
+
+```java
+ClientBuilder authentication(String authPluginClassName, String authParamsString) 
+    throws UnsupportedAuthenticationException
+```
+
+<ParamField path="authPluginClassName" type="String">
+  Name of the Authentication-Plugin you want to use
+</ParamField>
+
+<ParamField path="authParamsString" type="String">
+  String which represents parameters for the Authentication-Plugin, e.g., "key1:val1,key2:val2"
+</ParamField>
+
+**Example:**
+```java
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar+ssl://broker.example.com:6651/")
+    .authentication(
+        "org.apache.pulsar.client.impl.auth.AuthenticationTls",
+        "tlsCertFile:/my/cert/file,tlsKeyFile:/my/key/file"
+    )
+    .build();
+```
+
+### authentication(String, Map)
+
+Configure the authentication provider using a config map.
+
+```java
+ClientBuilder authentication(String authPluginClassName, Map<String, String> authParams)
+    throws UnsupportedAuthenticationException
+```
+
+<ParamField path="authPluginClassName" type="String">
+  Name of the Authentication-Plugin you want to use
+</ParamField>
+
+<ParamField path="authParams" type="Map<String, String>">
+  Map which represents parameters for the Authentication-Plugin
+</ParamField>
+
+**Example:**
+```java
+Map<String, String> conf = new TreeMap<>();
+conf.put("tlsCertFile", "/my/cert/file");
+conf.put("tlsKeyFile", "/my/key/file");
+
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar+ssl://broker.example.com:6651/")
+    .authentication(
+        "org.apache.pulsar.client.impl.auth.AuthenticationTls", conf
+    )
+    .build();
+```
+
+## TLS Configuration
+
+### enableTls()
+
+Configure whether to use TLS encryption on the connection.
+
+```java
+@Deprecated
+ClientBuilder enableTls(boolean enableTls)
+```
+
+<Note>
+Deprecated: use "pulsar+ssl://" in serviceUrl to enable TLS instead.
+</Note>
+
+### tlsKeyFilePath()
+
+Set the path to the TLS key file.
+
+```java
+ClientBuilder tlsKeyFilePath(String tlsKeyFilePath)
+```
+
+<ParamField path="tlsKeyFilePath" type="String">
+  Path to the TLS key file
+</ParamField>
+
+### tlsCertificateFilePath()
+
+Set the path to the TLS certificate file.
+
+```java
+ClientBuilder tlsCertificateFilePath(String tlsCertificateFilePath)
+```
+
+<ParamField path="tlsCertificateFilePath" type="String">
+  Path to the TLS certificate file
+</ParamField>
+
+### tlsTrustCertsFilePath()
+
+Set the path to the trusted TLS certificate file.
+
+```java
+ClientBuilder tlsTrustCertsFilePath(String tlsTrustCertsFilePath)
+```
+
+<ParamField path="tlsTrustCertsFilePath" type="String">
+  Path to the trusted TLS certificate file
+</ParamField>
+
+### allowTlsInsecureConnection()
+
+Configure whether the Pulsar client accepts untrusted TLS certificate from broker. Default is false.
+
+```java
+ClientBuilder allowTlsInsecureConnection(boolean allowTlsInsecureConnection)
+```
+
+<ParamField path="allowTlsInsecureConnection" type="boolean">
+  Whether to accept an untrusted TLS certificate
+</ParamField>
+
+### enableTlsHostnameVerification()
+
+It allows to validate hostname verification when client connects to broker over TLS.
+
+```java
+ClientBuilder enableTlsHostnameVerification(boolean enableTlsHostnameVerification)
+```
+
+<ParamField path="enableTlsHostnameVerification" type="boolean">
+  Whether to enable TLS hostname verification
+</ParamField>
+
+### useKeyStoreTls()
+
+If TLS is enabled, whether use KeyStore type as TLS configuration parameter. False means use default pem type configuration.
+
+```java
+ClientBuilder useKeyStoreTls(boolean useKeyStoreTls)
+```
+
+<ParamField path="useKeyStoreTls" type="boolean">
+  Whether to use KeyStore type
+</ParamField>
+
+### sslProvider()
+
+The name of the security provider used for SSL connections. Default value is the default security provider of the JVM.
+
+```java
+ClientBuilder sslProvider(String sslProvider)
+```
+
+<ParamField path="sslProvider" type="String">
+  The SSL provider name
+</ParamField>
+
+### tlsKeyStoreType()
+
+The file format of the key store file.
+
+```java
+ClientBuilder tlsKeyStoreType(String tlsKeyStoreType)
+```
+
+<ParamField path="tlsKeyStoreType" type="String">
+  The key store type
+</ParamField>
+
+### tlsKeyStorePath()
+
+The location of the key store file.
+
+```java
+ClientBuilder tlsKeyStorePath(String tlsTrustStorePath)
+```
+
+<ParamField path="tlsTrustStorePath" type="String">
+  The key store path
+</ParamField>
+
+### tlsKeyStorePassword()
+
+The store password for the key store file.
+
+```java
+ClientBuilder tlsKeyStorePassword(String tlsKeyStorePassword)
+```
+
+<ParamField path="tlsKeyStorePassword" type="String">
+  The key store password
+</ParamField>
+
+### tlsTrustStoreType()
+
+The file format of the trust store file.
+
+```java
+ClientBuilder tlsTrustStoreType(String tlsTrustStoreType)
+```
+
+<ParamField path="tlsTrustStoreType" type="String">
+  The trust store type
+</ParamField>
+
+### tlsTrustStorePath()
+
+The location of the trust store file.
+
+```java
+ClientBuilder tlsTrustStorePath(String tlsTrustStorePath)
+```
+
+<ParamField path="tlsTrustStorePath" type="String">
+  The trust store path
+</ParamField>
+
+### tlsTrustStorePassword()
+
+The store password for the trust store file.
+
+```java
+ClientBuilder tlsTrustStorePassword(String tlsTrustStorePassword)
+```
+
+<ParamField path="tlsTrustStorePassword" type="String">
+  The trust store password
+</ParamField>
+
+### tlsCiphers()
+
+A list of cipher suites.
+
+```java
+ClientBuilder tlsCiphers(Set<String> tlsCiphers)
+```
+
+<ParamField path="tlsCiphers" type="Set<String>">
+  The cipher suites to use
+</ParamField>
+
+### tlsProtocols()
+
+The SSL protocol used to generate the SSLContext. Default setting is TLS.
+
+```java
+ClientBuilder tlsProtocols(Set<String> tlsProtocols)
+```
+
+<ParamField path="tlsProtocols" type="Set<String>">
+  Allowed values in recent JVMs are TLS, TLSv1.3, TLSv1.2 and TLSv1.1
+</ParamField>
+
+## Threading Configuration
+
+### ioThreads()
+
+Set the number of threads to be used for handling connections to brokers. Default is `Runtime.getRuntime().availableProcessors()`.
+
+```java
+ClientBuilder ioThreads(int numIoThreads)
+```
+
+<ParamField path="numIoThreads" type="int">
+  The number of IO threads
+</ParamField>
+
+### listenerThreads()
+
+Set the number of threads to be used for message listeners. Default is `Runtime.getRuntime().availableProcessors()`.
+
+```java
+ClientBuilder listenerThreads(int numListenerThreads)
+```
+
+<ParamField path="numListenerThreads" type="int">
+  The number of listener threads
+</ParamField>
+
+The listener thread pool is shared across all the consumers and readers that are using a "listener" model to get messages. For a given consumer, the listener will always be invoked from the same thread, to ensure ordering.
+
+## Timeout Configuration
+
+### operationTimeout()
+
+Set the operation timeout. Default is 30 seconds.
+
+```java
+ClientBuilder operationTimeout(int operationTimeout, TimeUnit unit)
+```
+
+<ParamField path="operationTimeout" type="int">
+  Operation timeout
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  Time unit for operationTimeout
+</ParamField>
+
+Producer-create, subscribe and unsubscribe operations will be retried until this interval, after which the operation will be marked as failed.
+
+### lookupTimeout()
+
+Set lookup timeout. Default matches operation timeout.
+
+```java
+ClientBuilder lookupTimeout(int lookupTimeout, TimeUnit unit)
+```
+
+<ParamField path="lookupTimeout" type="int">
+  Lookup timeout
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  Time unit for lookupTimeout
+</ParamField>
+
+## Network Configuration
+
+### enableTcpNoDelay()
+
+Configure whether to use TCP no-delay flag on the connection. Default value is true.
+
+```java
+ClientBuilder enableTcpNoDelay(boolean enableTcpNoDelay)
+```
+
+<ParamField path="enableTcpNoDelay" type="boolean">
+  Whether to enable TCP no-delay feature
+</ParamField>
+
+No-delay features make sure packets are sent out on the network as soon as possible, and it's critical to achieve low latency publishes.
+
+### keepAliveInterval()
+
+Set keep alive interval for each client-broker-connection. Default is 30 seconds.
+
+```java
+ClientBuilder keepAliveInterval(int keepAliveInterval, TimeUnit unit)
+```
+
+<ParamField path="keepAliveInterval" type="int">
+  Keep alive interval
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  The time unit in which the keepAliveInterval is defined
+</ParamField>
+
+## Memory and Resource Configuration
+
+### memoryLimit()
+
+Configure a limit on the amount of direct memory that will be allocated by this client instance. Default is 64 MB.
+
+```java
+ClientBuilder memoryLimit(long memoryLimit, SizeUnit unit)
+```
+
+<ParamField path="memoryLimit" type="long">
+  The limit (setting to 0 will disable the limit)
+</ParamField>
+
+<ParamField path="unit" type="SizeUnit">
+  The memory limit size unit
+</ParamField>
+
+### maxConcurrentLookupRequests()
+
+Number of concurrent lookup-requests allowed to send on each broker-connection to prevent overload on broker. Default is 5000.
+
+```java
+ClientBuilder maxConcurrentLookupRequests(int maxConcurrentLookupRequests)
+```
+
+<ParamField path="maxConcurrentLookupRequests" type="int">
+  Max concurrent lookup requests
+</ParamField>
+
+### maxLookupRequests()
+
+Number of max lookup-requests allowed on each broker-connection to prevent overload on broker. Default is 50000.
+
+```java
+ClientBuilder maxLookupRequests(int maxLookupRequests)
+```
+
+<ParamField path="maxLookupRequests" type="int">
+  Max lookup requests
+</ParamField>
+
+### maxLookupRedirects()
+
+Set the maximum number of times a lookup-request to a broker will be redirected.
+
+```java
+ClientBuilder maxLookupRedirects(int maxLookupRedirects)
+```
+
+<ParamField path="maxLookupRedirects" type="int">
+  The maximum number of redirects
+</ParamField>
+
+### maxNumberOfRejectedRequestPerConnection()
+
+Set max number of broker-rejected requests in a certain time-frame (60 seconds). Default is 50.
+
+```java
+ClientBuilder maxNumberOfRejectedRequestPerConnection(int maxNumberOfRejectedRequestPerConnection)
+```
+
+<ParamField path="maxNumberOfRejectedRequestPerConnection" type="int">
+  Max number of rejected requests
+</ParamField>
+
+## Backoff Configuration
+
+### startingBackoffInterval()
+
+Set the duration of time for a backoff interval.
+
+```java
+ClientBuilder startingBackoffInterval(long duration, TimeUnit unit)
+```
+
+<ParamField path="duration" type="long">
+  The duration of the interval
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  The time unit in which the duration is defined
+</ParamField>
+
+### maxBackoffInterval()
+
+Set the maximum duration of time for a backoff interval.
+
+```java
+ClientBuilder maxBackoffInterval(long duration, TimeUnit unit)
+```
+
+<ParamField path="duration" type="long">
+  The duration of the interval
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  The time unit in which the duration is defined
+</ParamField>
+
+## Telemetry and Monitoring
+
+### openTelemetry()
+
+Configure OpenTelemetry for Pulsar Client.
+
+```java
+ClientBuilder openTelemetry(io.opentelemetry.api.OpenTelemetry openTelemetry)
+```
+
+<ParamField path="openTelemetry" type="OpenTelemetry">
+  The OpenTelemetry instance
+</ParamField>
+
+When you pass an OpenTelemetry instance, Pulsar client will emit metrics that can be exported in a variety of different methods.
+
+### enableTracing()
+
+Enable OpenTelemetry distributed tracing.
+
+```java
+ClientBuilder enableTracing(boolean tracingEnabled)
+```
+
+<ParamField path="tracingEnabled" type="boolean">
+  Whether to enable tracing (default: false)
+</ParamField>
+
+When enabled, interceptors are automatically added to all producers and consumers to create spans for message publishing and consumption.
+
+**Example with Java Agent:**
+```java
+// When using -javaagent:opentelemetry-javaagent.jar
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar://localhost:6650")
+    .enableTracing(true)  // Use GlobalOpenTelemetry
+    .build();
+```
+
+### statsInterval()
+
+Set the interval between each stat info. Default is 60 seconds.
+
+```java
+@Deprecated
+ClientBuilder statsInterval(long statsInterval, TimeUnit unit)
+```
+
+<ParamField path="statsInterval" type="long">
+  The interval between each stat info
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  Time unit for statsInterval
+</ParamField>
+
+<Note>
+Deprecated: See openTelemetry() instead.
+</Note>
+
+## Advanced Configuration
+
+### clock()
+
+The clock used by the pulsar client.
+
+```java
+ClientBuilder clock(Clock clock)
+```
+
+<ParamField path="clock" type="Clock">
+  The clock used by the pulsar client to retrieve time information
+</ParamField>
+
+The clock is currently used by producer for setting publish timestamps. The default clock is a system default zone clock.
+
+<Warning>
+The clock is used for TTL enforcement and timestamp based seeks, so be aware of the impacts if you are going to use a different clock.
+</Warning>
+
+### enableBusyWait()
+
+Option to enable busy-wait settings. Default is false.
+
+```java
+ClientBuilder enableBusyWait(boolean enableBusyWait)
+```
+
+<ParamField path="enableBusyWait" type="boolean">
+  Whether to enable busy wait
+</ParamField>
+
+<Warning>
+This option will enable spin-waiting on executors and IO threads in order to reduce latency during context switches. The spinning will consume 100% CPU even when the broker is not doing any work.
+</Warning>
+
+### proxyServiceUrl()
+
+Proxy-service url when client would like to connect to broker via proxy.
+
+```java
+ClientBuilder proxyServiceUrl(String proxyServiceUrl, ProxyProtocol proxyProtocol)
+```
+
+<ParamField path="proxyServiceUrl" type="String">
+  Proxy service url
+</ParamField>
+
+<ParamField path="proxyProtocol" type="ProxyProtocol">
+  Protocol to decide type of proxy routing eg: SNI-routing
+</ParamField>
+
+### enableTransaction()
+
+If enable transaction, start the transactionCoordinatorClient with pulsar client.
+
+```java
+ClientBuilder enableTransaction(boolean enableTransaction)
+```
+
+<ParamField path="enableTransaction" type="boolean">
+  Whether enable transaction feature
+</ParamField>
+
+### dnsLookupBind()
+
+Set dns lookup bind address and port.
+
+```java
+ClientBuilder dnsLookupBind(String address, int port)
+```
+
+<ParamField path="address" type="String">
+  DNS bind address
+</ParamField>
+
+<ParamField path="port" type="int">
+  DNS bind port
+</ParamField>
+
+### dnsServerAddresses()
+
+Set dns lookup server addresses.
+
+```java
+ClientBuilder dnsServerAddresses(List<InetSocketAddress> addresses)
+```
+
+<ParamField path="addresses" type="List<InetSocketAddress>">
+  DNS server addresses
+</ParamField>
+
+### socks5ProxyAddress()
+
+Set socks5 proxy address.
+
+```java
+ClientBuilder socks5ProxyAddress(InetSocketAddress socks5ProxyAddress)
+```
+
+<ParamField path="socks5ProxyAddress" type="InetSocketAddress">
+  SOCKS5 proxy address
+</ParamField>
+
+### socks5ProxyUsername()
+
+Set socks5 proxy username.
+
+```java
+ClientBuilder socks5ProxyUsername(String socks5ProxyUsername)
+```
+
+<ParamField path="socks5ProxyUsername" type="String">
+  SOCKS5 proxy username
+</ParamField>
+
+### socks5ProxyPassword()
+
+Set socks5 proxy password.
+
+```java
+ClientBuilder socks5ProxyPassword(String socks5ProxyPassword)
+```
+
+<ParamField path="socks5ProxyPassword" type="String">
+  SOCKS5 proxy password
+</ParamField>
+
+### description()
+
+Set the description.
+
+```java
+ClientBuilder description(String description)
+```
+
+<ParamField path="description" type="String">
+  The description of the current PulsarClient instance
+</ParamField>
+
+By default, when the client connects to the broker, a version string like `Pulsar-Java-v<x.y.z>` will be carried and saved by the broker. This method provides a way to add more description to a specific PulsarClient instance.
+
+### sharedResources()
+
+Provide a set of shared client resources to be reused by this client.
+
+```java
+ClientBuilder sharedResources(PulsarClientSharedResources sharedResources)
+```
+
+<ParamField path="sharedResources" type="PulsarClientSharedResources">
+  The shared resources instance created with PulsarClientSharedResources.builder()
+</ParamField>
+
+Providing a shared resource instance allows PulsarClient instances to share resources (such as IO/event loops, timers, executors, DNS resolver/cache) with other PulsarClient instances.
+
+### lookupProperties()
+
+Set the properties used for topic lookup.
+
+```java
+ClientBuilder lookupProperties(Map<String, String> properties)
+```
+
+<ParamField path="properties" type="Map<String, String>">
+  Lookup properties map
+</ParamField>
+
+When the broker performs topic lookup, these lookup properties will be taken into consideration in a customized load manager.
+
+### serviceUrlQuarantineInitDuration()
+
+Configure the service URL init quarantine duration. Default is 60 seconds.
+
+```java
+ClientBuilder serviceUrlQuarantineInitDuration(long serviceUrlQuarantineInitDuration, TimeUnit unit)
+```
+
+<ParamField path="serviceUrlQuarantineInitDuration" type="long">
+  The initial quarantine duration for unavailable endpoint
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  The time unit for the quarantine duration
+</ParamField>
+
+### serviceUrlQuarantineMaxDuration()
+
+Configure the service URL max quarantine duration. Default is 1 day.
+
+```java
+ClientBuilder serviceUrlQuarantineMaxDuration(long serviceUrlQuarantineMaxDuration, TimeUnit unit)
+```
+
+<ParamField path="serviceUrlQuarantineMaxDuration" type="long">
+  The maximum quarantine duration for unavailable endpoint
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  The time unit for the quarantine duration
+</ParamField>
+
+### sslFactoryPlugin()
+
+Set the SSL Factory Plugin for custom implementation to create SSL Context and SSLEngine.
+
+```java
+ClientBuilder sslFactoryPlugin(String sslFactoryPlugin)
+```
+
+<ParamField path="sslFactoryPlugin" type="String">
+  SSL factory class name
+</ParamField>
+
+### sslFactoryPluginParams()
+
+Set the SSL Factory Plugin params for the ssl factory plugin to use.
+
+```java
+ClientBuilder sslFactoryPluginParams(String sslFactoryPluginParams)
+```
+
+<ParamField path="sslFactoryPluginParams" type="String">
+  Params in String format that will be inputted to the SSL Factory Plugin
+</ParamField>
+
+### autoCertRefreshSeconds()
+
+Set Cert Refresh interval in seconds.
+
+```java
+ClientBuilder autoCertRefreshSeconds(int autoCertRefreshSeconds)
+```
+
+<ParamField path="autoCertRefreshSeconds" type="int">
+  Auto certificate refresh interval in seconds
+</ParamField>

@@ -1,0 +1,592 @@
+---
+title: "Topics API"
+description: "REST API endpoints for managing Pulsar topics, subscriptions, and topic-level policies"
+---
+
+## Overview
+
+Topics are the channels through which messages are sent and received in Pulsar. The Topics API provides comprehensive management capabilities for both persistent and non-persistent topics, including partitioning, subscriptions, and topic-level policies.
+
+**Base Path**: `/admin/v2/persistent` (for persistent topics)
+
+## List Topics
+
+Get all topics in a namespace.
+
+```http
+GET /admin/v2/persistent/{tenant}/{namespace}
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+<ParamField path="namespace" type="string" required>
+  The namespace name
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="bundle" type="string">
+  Specific bundle to query
+</ParamField>
+
+<ParamField query="includeSystemTopic" type="boolean" default="false">
+  Include system topics in the list
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/persistent/my-tenant/my-namespace \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+List<String> topics = admin.topics().getList("my-tenant/my-namespace");
+```
+
+```python Python
+topics = admin.topics().get_list("my-tenant/my-namespace")
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+[
+  "persistent://my-tenant/my-namespace/my-topic-1",
+  "persistent://my-tenant/my-namespace/my-topic-2",
+  "persistent://my-tenant/my-namespace/events"
+]
+```
+
+## List Partitioned Topics
+
+Get all partitioned topics in a namespace.
+
+```http
+GET /admin/v2/persistent/{tenant}/{namespace}/partitioned
+```
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/persistent/my-tenant/my-namespace/partitioned \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+List<String> topics = admin.topics().getPartitionedTopicList("my-tenant/my-namespace");
+```
+</CodeGroup>
+
+## Create Non-Partitioned Topic
+
+Create a new non-partitioned topic.
+
+```http
+PUT /admin/v2/persistent/{tenant}/{namespace}/{topic}
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+<ParamField path="namespace" type="string" required>
+  The namespace name
+</ParamField>
+
+<ParamField path="topic" type="string" required>
+  The topic name
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="authoritative" type="boolean" default="false">
+  Whether this broker is authoritative
+</ParamField>
+
+### Request Body
+
+<ParamField body="properties" type="object">
+  Key-value pairs for topic metadata
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X PUT http://localhost:8080/admin/v2/persistent/my-tenant/my-namespace/my-topic \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app": "my-app",
+    "owner": "team-a"
+  }'
+```
+
+```java Java
+Map<String, String> properties = Map.of(
+    "app", "my-app",
+    "owner", "team-a"
+);
+
+admin.topics().createNonPartitionedTopic("persistent://my-tenant/my-namespace/my-topic", properties);
+```
+
+```python Python
+properties = {
+    "app": "my-app",
+    "owner": "team-a"
+}
+
+admin.topics().create_non_partitioned_topic("persistent://my-tenant/my-namespace/my-topic", properties)
+```
+</CodeGroup>
+
+### Response Codes
+
+| Code | Description |
+|------|-------------|
+| 204 | Topic created successfully |
+| 307 | Current broker doesn't serve this namespace |
+| 401 | Don't have permission |
+| 403 | Don't have admin permission |
+| 404 | Tenant or namespace doesn't exist |
+| 409 | Topic already exists |
+
+## Create Partitioned Topic
+
+Create a partitioned topic with a specified number of partitions.
+
+```http
+PUT /admin/v2/persistent/{tenant}/{namespace}/{topic}/partitions
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+<ParamField path="namespace" type="string" required>
+  The namespace name
+</ParamField>
+
+<ParamField path="topic" type="string" required>
+  The topic name
+</ParamField>
+
+### Request Body
+
+<ParamField body="numPartitions" type="integer" required>
+  Number of partitions (must be > 0)
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="createLocalTopicOnly" type="boolean" default="false">
+  Create topic only on local cluster
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X PUT http://localhost:8080/admin/v2/persistent/my-tenant/my-namespace/my-partitioned-topic/partitions \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '4'
+```
+
+```java Java
+admin.topics().createPartitionedTopic("persistent://my-tenant/my-namespace/my-partitioned-topic", 4);
+```
+
+```python Python
+admin.topics().create_partitioned_topic("persistent://my-tenant/my-namespace/my-partitioned-topic", 4)
+```
+</CodeGroup>
+
+### Response Codes
+
+| Code | Description |
+|------|-------------|
+| 204 | Partitioned topic created successfully |
+| 401 | Don't have permission |
+| 403 | Don't have admin permission |
+| 404 | Tenant or namespace doesn't exist |
+| 406 | Number of partitions exceeds maximum |
+| 409 | Topic already exists |
+
+## Update Partitions
+
+Increase the number of partitions for an existing partitioned topic.
+
+```http
+POST /admin/v2/persistent/{tenant}/{namespace}/{topic}/partitions
+```
+
+### Request Body
+
+<ParamField body="numPartitions" type="integer" required>
+  New number of partitions (must be greater than current)
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/persistent/my-tenant/my-namespace/my-partitioned-topic/partitions \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '8'
+```
+
+```java Java
+admin.topics().updatePartitionedTopic("persistent://my-tenant/my-namespace/my-partitioned-topic", 8);
+```
+</CodeGroup>
+
+<Warning>
+  You can only increase the number of partitions. Decreasing partitions requires deleting and recreating the topic.
+</Warning>
+
+## Topic Permissions
+
+### Get Permissions
+
+Retrieve permissions for a topic.
+
+```http
+GET /admin/v2/persistent/{tenant}/{namespace}/{topic}/permissions
+```
+
+### Grant Permission
+
+Grant permissions to a role on a topic.
+
+```http
+POST /admin/v2/persistent/{tenant}/{namespace}/{topic}/permissions/{role}
+```
+
+#### Path Parameters
+
+<ParamField path="role" type="string" required>
+  The role name
+</ParamField>
+
+#### Request Body
+
+<ParamField body="actions" type="array" required>
+  Array of actions: "produce", "consume", "functions"
+</ParamField>
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/persistent/my-tenant/my-namespace/my-topic/permissions/my-role \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '["produce", "consume"]'
+```
+
+```java Java
+Set<AuthAction> actions = Set.of(AuthAction.produce, AuthAction.consume);
+admin.topics().grantPermission(
+    "persistent://my-tenant/my-namespace/my-topic",
+    "my-role",
+    actions
+);
+```
+</CodeGroup>
+
+### Revoke Permission
+
+Revoke permissions from a role on a topic.
+
+```http
+DELETE /admin/v2/persistent/{tenant}/{namespace}/{topic}/permissions/{role}
+```
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:8080/admin/v2/persistent/my-tenant/my-namespace/my-topic/permissions/my-role \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+admin.topics().revokePermissions(
+    "persistent://my-tenant/my-namespace/my-topic",
+    "my-role"
+);
+```
+</CodeGroup>
+
+## Topic Policies
+
+### Offload Policies
+
+Configure automatic offloading to long-term storage.
+
+#### Set Offload Policies
+
+```http
+POST /admin/v2/persistent/{tenant}/{namespace}/{topic}/offloadPolicies
+```
+
+##### Request Body
+
+<ParamField body="offloadThresholdInBytes" type="integer">
+  Size threshold for offloading
+</ParamField>
+
+<ParamField body="offloadThresholdInSeconds" type="integer">
+  Age threshold for offloading
+</ParamField>
+
+<ParamField body="offloadDriver" type="string">
+  Storage driver: "aws-s3", "google-cloud-storage", "filesystem"
+</ParamField>
+
+##### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/persistent/my-tenant/my-namespace/my-topic/offloadPolicies \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "offloadThresholdInBytes": 10737418240,
+    "offloadDriver": "aws-s3",
+    "bucket": "my-pulsar-bucket",
+    "region": "us-west-2"
+  }'
+```
+
+```java Java
+OffloadPolicies policies = OffloadPolicies.builder()
+    .offloadThresholdInBytes(10737418240L)
+    .offloadDriver("aws-s3")
+    .build();
+
+admin.topics().setOffloadPolicies(
+    "persistent://my-tenant/my-namespace/my-topic",
+    policies
+);
+```
+</CodeGroup>
+
+#### Get Offload Policies
+
+```http
+GET /admin/v2/persistent/{tenant}/{namespace}/{topic}/offloadPolicies
+```
+
+##### Query Parameters
+
+<ParamField query="applied" type="boolean" default="false">
+  Get effective policies (including inherited)
+</ParamField>
+
+#### Delete Offload Policies
+
+```http
+DELETE /admin/v2/persistent/{tenant}/{namespace}/{topic}/offloadPolicies
+```
+
+### Max Unacked Messages
+
+Control the maximum number of unacknowledged messages.
+
+#### Set Max Unacked Messages on Consumer
+
+```http
+POST /admin/v2/persistent/{tenant}/{namespace}/{topic}/maxUnackedMessagesOnConsumer
+```
+
+##### Request Body
+
+<ParamField body="maxUnackedNum" type="integer" required>
+  Maximum number of unacked messages per consumer
+</ParamField>
+
+##### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/persistent/my-tenant/my-namespace/my-topic/maxUnackedMessagesOnConsumer \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '50000'
+```
+
+```java Java
+admin.topics().setMaxUnackedMessagesOnConsumer(
+    "persistent://my-tenant/my-namespace/my-topic",
+    50000
+);
+```
+</CodeGroup>
+
+#### Get Max Unacked Messages on Consumer
+
+```http
+GET /admin/v2/persistent/{tenant}/{namespace}/{topic}/maxUnackedMessagesOnConsumer
+```
+
+#### Delete Max Unacked Messages Policy
+
+```http
+DELETE /admin/v2/persistent/{tenant}/{namespace}/{topic}/maxUnackedMessagesOnConsumer
+```
+
+### Delayed Delivery
+
+Configure delayed message delivery.
+
+#### Set Delayed Delivery Policies
+
+```http
+POST /admin/v2/persistent/{tenant}/{namespace}/{topic}/delayedDelivery
+```
+
+##### Request Body
+
+<ParamField body="tickTime" type="integer" required>
+  Tick time for delayed delivery in milliseconds
+</ParamField>
+
+<ParamField body="active" type="boolean" required>
+  Whether delayed delivery is enabled
+</ParamField>
+
+##### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/persistent/my-tenant/my-namespace/my-topic/delayedDelivery \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tickTime": 1000,
+    "active": true
+  }'
+```
+
+```java Java
+DelayedDeliveryPolicies policies = DelayedDeliveryPolicies.builder()
+    .tickTime(1000)
+    .active(true)
+    .build();
+
+admin.topics().setDelayedDeliveryPolicy(
+    "persistent://my-tenant/my-namespace/my-topic",
+    policies
+);
+```
+</CodeGroup>
+
+#### Get Delayed Delivery Policies
+
+```http
+GET /admin/v2/persistent/{tenant}/{namespace}/{topic}/delayedDelivery
+```
+
+### Inactive Topic Policies
+
+Configure automatic cleanup of inactive topics.
+
+#### Set Inactive Topic Policies
+
+```http
+POST /admin/v2/persistent/{tenant}/{namespace}/{topic}/inactiveTopicPolicies
+```
+
+##### Request Body
+
+<ParamField body="inactiveTopicDeleteMode" type="string" required>
+  Delete mode: "delete_when_no_subscriptions" or "delete_when_subscriptions_caught_up"
+</ParamField>
+
+<ParamField body="maxInactiveDurationSeconds" type="integer" required>
+  Maximum inactive duration before deletion
+</ParamField>
+
+##### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/persistent/my-tenant/my-namespace/my-topic/inactiveTopicPolicies \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inactiveTopicDeleteMode": "delete_when_no_subscriptions",
+    "maxInactiveDurationSeconds": 3600
+  }'
+```
+
+```java Java
+InactiveTopicPolicies policies = InactiveTopicPolicies.builder()
+    .inactiveTopicDeleteMode(InactiveTopicDeleteMode.delete_when_no_subscriptions)
+    .maxInactiveDurationSeconds(3600)
+    .build();
+
+admin.topics().setInactiveTopicPolicies(
+    "persistent://my-tenant/my-namespace/my-topic",
+    policies
+);
+```
+</CodeGroup>
+
+## Best Practices
+
+### Topic Naming
+
+- Use descriptive names that reflect the data type
+- Follow a consistent naming convention
+- Avoid special characters except hyphens and underscores
+- Consider using hierarchical names with separators
+
+### Partitioning Strategy
+
+- Use partitioned topics for high-throughput scenarios
+- Start with 1-2 partitions per broker core
+- Monitor partition load and adjust as needed
+- Plan partition count growth carefully (can only increase)
+
+### Policy Configuration
+
+- Set offload policies for cost-effective storage
+- Configure inactive topic cleanup to free resources
+- Use max unacked messages to prevent consumer overload
+- Enable delayed delivery for scheduled message processing
+
+### Performance Optimization
+
+- Use appropriate partition counts for parallelism
+- Configure batching for better throughput
+- Set message TTL to prevent unbounded growth
+- Monitor topic statistics regularly
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Namespaces API" icon="folder" href="/admin-api/namespaces">
+    Configure namespace-level policies
+  </Card>
+  
+  <Card title="Schemas API" icon="database" href="/admin-api/schemas">
+    Manage topic schemas
+  </Card>
+</CardGroup>

@@ -1,0 +1,287 @@
+---
+title: Messaging Model
+description: Understanding Pulsar's pub-sub messaging semantics
+---
+
+Apache Pulsar implements a flexible pub-sub messaging model that supports multiple messaging patterns, from traditional queue semantics to streaming workloads.
+
+## Pub-Sub Fundamentals
+
+Pulsar uses a publish-subscribe model where:
+
+- **Producers** publish messages to topics
+- **Consumers** subscribe to topics to receive messages
+- **Topics** serve as named channels for message transmission
+- **Subscriptions** track which messages have been consumed
+
+<Info>
+Unlike traditional message queues, Pulsar's pub-sub model allows multiple independent subscriptions on the same topic, each maintaining its own consumption state.
+</Info>
+
+## Message Structure
+
+From `pulsar-client-api/src/main/java/org/apache/pulsar/client/api/Message.java`, Pulsar messages contain:
+
+```java
+public interface Message<T> {
+    // Core message components
+    T getValue();              // Deserialized message payload
+    byte[] getData();          // Raw payload bytes
+    MessageId getMessageId();  // Unique message identifier
+    
+    // Metadata
+    String getKey();                        // Optional message key
+    byte[] getOrderingKey();                // Key for ordering in Key_Shared mode
+    Map<String, String> getProperties();    // User-defined properties
+    
+    // Timestamps
+    long getPublishTime();     // When producer sent the message
+    long getEventTime();       // Application-defined event timestamp
+    
+    // Producer information
+    String getProducerName();  // Name of the producing client
+    String getTopicName();     // Topic where message was published
+    
+    // Advanced features
+    long getSequenceId();              // Producer-assigned sequence
+    int getRedeliveryCount();          // How many times redelivered
+    byte[] getSchemaVersion();         // Schema version used
+    Optional<EncryptionContext> getEncryptionCtx();  // Encryption info
+}
+```
+
+### Message Properties
+
+Messages can carry arbitrary key-value properties:
+
+```java
+// From TypedMessageBuilder interface
+producer.newMessage()
+    .value(myData)
+    .key("user-123")
+    .property("region", "us-west")
+    .property("priority", "high")
+    .eventTime(System.currentTimeMillis())
+    .send();
+```
+
+## Message Delivery Semantics
+
+Pulsar supports different delivery guarantees based on configuration:
+
+### At-Most-Once
+
+Messages may be lost but are never redelivered:
+
+```java
+// Producer sends without waiting for acknowledgment
+producer.sendAsync(message);
+// Don't wait for response - fire and forget
+```
+
+### At-Least-Once
+
+Messages are never lost but may be redelivered (default behavior):
+
+```java
+// Producer waits for broker acknowledgment
+MessageId msgId = producer.send(message);
+
+// Consumer acknowledges after processing
+Message<String> msg = consumer.receive();
+processMessage(msg);
+consumer.acknowledge(msg);
+```
+
+<Info>
+This is the most common delivery semantic. If the consumer crashes before acknowledging, the message will be redelivered.
+</Info>
+
+### Exactly-Once
+
+Messages are delivered exactly once using transactions (from `pulsar-client-api/src/main/java/org/apache/pulsar/client/api/transaction/Transaction.java`):
+
+```java
+// Using transactions for exactly-once semantics
+Transaction txn = client.newTransaction()
+    .withTransactionTimeout(1, TimeUnit.MINUTES)
+    .build()
+    .get();
+
+try {
+    // Produce and consume within transaction
+    producer.newMessage(txn).value(data).send();
+    consumer.acknowledgeAsync(msgId, txn).get();
+    
+    // Commit - messages visible atomically
+    txn.commit().get();
+} catch (Exception e) {
+    // Abort - no messages are visible
+    txn.abort().get();
+}
+```
+
+## Message Acknowledgment
+
+From `pulsar-client-api/src/main/java/org/apache/pulsar/client/api/Consumer.java`, consumers can acknowledge messages in several ways:
+
+### Individual Acknowledgment
+
+```java
+Message<String> msg = consumer.receive();
+try {
+    processMessage(msg);
+    consumer.acknowledge(msg);  // Acknowledge this message
+} catch (Exception e) {
+    consumer.negativeAcknowledge(msg);  // Redeliver this message
+}
+```
+
+### Cumulative Acknowledgment
+
+Acknowledge all messages up to and including a specific message:
+
+```java
+// Only works with Exclusive and Failover subscriptions
+consumer.acknowledgeCumulative(msg);
+// All messages up to 'msg' are now acknowledged
+```
+
+### Negative Acknowledgment
+
+Request immediate redelivery of a message:
+
+```java
+// From Consumer.java - negativeAcknowledge method
+consumer.negativeAcknowledge(msg);
+// Message will be redelivered after configured delay
+```
+
+<Warning>
+Negative acknowledgments trigger redelivery after a delay (configurable via `negativeAckRedeliveryDelay`). Use this when you want to retry processing a message.
+</Warning>
+
+### Retry Letter Topic
+
+Messages can be sent to a retry topic for delayed reprocessing:
+
+```java
+// Configure dead letter policy
+Consumer<String> consumer = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-sub")
+    .deadLetterPolicy(DeadLetterPolicy.builder()
+        .maxRedeliverCount(3)
+        .deadLetterTopic("my-topic-DLQ")
+        .build())
+    .subscribe();
+
+// Use reconsumeLater for custom retry delays
+consumer.reconsumeLater(msg, 5, TimeUnit.SECONDS);
+```
+
+## Message Retention
+
+Pulsar retains messages based on namespace-level policies:
+
+<CardGroup cols={2}>
+  <Card title="Acknowledged Messages">
+    Retained based on retention policy (time or size based)
+  </Card>
+  <Card title="Unacknowledged Messages">
+    Always retained until acknowledged by all subscriptions
+  </Card>
+</CardGroup>
+
+```bash
+# Set retention policy for a namespace
+pulsar-admin namespaces set-retention my-tenant/my-namespace \
+  --size 10G \
+  --time 24h
+```
+
+## Message Compression
+
+From `pulsar-client-api/src/main/java/org/apache/pulsar/client/api/CompressionType.java`, producers can compress messages:
+
+```java
+Producer<byte[]> producer = client.newProducer()
+    .topic("my-topic")
+    .compressionType(CompressionType.LZ4)  // or ZLIB, ZSTD, SNAPPY
+    .create();
+```
+
+Supported compression types:
+- **NONE**: No compression (default)
+- **LZ4**: Fast compression with good ratio
+- **ZLIB**: Better compression, more CPU intensive
+- **ZSTD**: Best compression ratio
+- **SNAPPY**: Fast with moderate compression
+
+## Message Batching
+
+Producers automatically batch messages for efficiency:
+
+```java
+Producer<String> producer = client.newProducer(Schema.STRING)
+    .topic("my-topic")
+    .batchingMaxPublishDelay(10, TimeUnit.MILLISECONDS)
+    .batchingMaxMessages(1000)
+    .batchingMaxBytes(1024 * 1024)  // 1 MB
+    .create();
+```
+
+<Info>
+Batching reduces overhead by sending multiple messages in a single network call. The broker automatically de-batches messages for consumers.
+</Info>
+
+## Message Routing
+
+For partitioned topics, producers can control message routing:
+
+```java
+// Key-based routing (default for partitioned topics)
+producer.newMessage()
+    .key("user-123")
+    .value(data)
+    .send();
+// All messages with same key go to same partition
+
+// Custom routing
+producer.newMessage()
+    .orderingKey(customKey.getBytes())
+    .value(data)
+    .send();
+```
+
+## Message Deduplication
+
+Pulsar can automatically deduplicate messages based on producer name and sequence ID:
+
+```java
+// Enable at namespace level
+pulsar-admin namespaces set-deduplication my-tenant/my-namespace --enable
+
+// Producer sends with sequence ID
+producer.newMessage()
+    .value(data)
+    .sequenceId(uniqueId)  // Must be monotonically increasing
+    .send();
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Producers & Consumers" icon="arrows-left-right" href="/concepts/producers-consumers">
+    Learn about client implementations
+  </Card>
+  <Card title="Subscriptions" icon="rss" href="/concepts/subscriptions">
+    Understand subscription types and semantics
+  </Card>
+  <Card title="Topics" icon="layer-group" href="/concepts/topics">
+    Explore topic types and partitioning
+  </Card>
+  <Card title="Schemas" icon="file-code" href="/concepts/schemas">
+    Learn about schema management
+  </Card>
+</CardGroup>

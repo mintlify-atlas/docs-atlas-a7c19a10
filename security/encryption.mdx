@@ -1,0 +1,651 @@
+---
+title: Encryption
+description: Configure TLS encryption and secure communication in Apache Pulsar
+---
+
+Encryption in Apache Pulsar protects data in transit using TLS (Transport Layer Security). This page covers TLS configuration for brokers, clients, proxies, and inter-broker communication.
+
+## TLS Overview
+
+Pulsar supports TLS encryption for all network communication:
+
+- **Client to Broker** - Encrypt client connections
+- **Broker to Broker** - Encrypt replication traffic
+- **Broker to BookKeeper** - Encrypt storage traffic
+- **Proxy to Broker** - Encrypt proxy forwarding
+- **Web Service** - HTTPS for admin and monitoring APIs
+
+<Warning>
+Always enable TLS in production environments. Unencrypted communication exposes message data and credentials to network eavesdropping.
+</Warning>
+
+## Certificate Requirements
+
+Pulsar supports two certificate formats:
+
+### PEM Certificates
+
+- **Certificate file** - X.509 certificate in PEM format (`.crt`, `.pem`)
+- **Private key** - RSA or ECDSA private key in PKCS#8 format (`.key`)
+- **CA certificate** - Certificate authority bundle for verification
+
+### KeyStore/TrustStore (JKS/PKCS12)
+
+- **KeyStore** - Contains private key and certificate
+- **TrustStore** - Contains trusted CA certificates
+- **Supported types** - JKS, PKCS12
+
+## Broker TLS Configuration
+
+### Enable TLS with PEM Certificates
+
+```properties
+# broker.conf
+
+# Enable TLS on broker service port
+brokerServicePortTls=6651
+
+# Enable TLS on web service port
+webServicePortTls=8443
+
+# TLS certificate file
+tlsCertificateFilePath=/path/to/broker.cert.pem
+
+# TLS private key file
+tlsKeyFilePath=/path/to/broker.key-pk8.pem
+
+# TLS trust certificates (CA bundle)
+tlsTrustCertsFilePath=/path/to/ca.cert.pem
+
+# Require client certificates (mutual TLS)
+tlsRequireTrustedClientCertOnConnect=false
+
+# Allow insecure connections (not recommended)
+tlsAllowInsecureConnection=false
+
+# Enable hostname verification
+tlsHostnameVerificationEnabled=true
+
+# TLS protocols (comma-separated)
+tlsProtocols=TLSv1.3,TLSv1.2
+
+# TLS cipher suites (comma-separated)
+tlsCiphers=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+
+# Certificate refresh interval (seconds, 0 = check every connection)
+tlsCertRefreshCheckDurationSec=300
+
+# TLS provider (OPENSSL or JDK)
+tlsProvider=OPENSSL
+
+# Web service TLS provider
+webServiceTlsProvider=Conscrypt
+```
+
+### Enable TLS with KeyStore
+
+```properties
+# broker.conf
+
+# Enable TLS with KeyStore
+tlsEnabledWithKeyStore=true
+
+# KeyStore type (JKS or PKCS12)
+tlsKeyStoreType=JKS
+
+# KeyStore path
+tlsKeyStore=/path/to/broker.keystore.jks
+
+# KeyStore password
+tlsKeyStorePassword=keystore-password
+
+# TrustStore type (JKS or PKCS12)
+tlsTrustStoreType=JKS
+
+# TrustStore path
+tlsTrustStore=/path/to/broker.truststore.jks
+
+# TrustStore password
+tlsTrustStorePassword=truststore-password
+```
+
+<Warning>
+Never commit passwords to version control. Use environment variables or secret management systems for production deployments.
+</Warning>
+
+### Web Service TLS
+
+Configure HTTPS for admin API and monitoring:
+
+```properties
+# Enable HTTPS
+webServicePortTls=8443
+
+# TLS protocols for web service
+webServiceTlsProtocols=TLSv1.3,TLSv1.2
+
+# TLS ciphers for web service
+webServiceTlsCiphers=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+
+# Web service TLS provider
+webServiceTlsProvider=Conscrypt
+```
+
+## Client TLS Configuration
+
+### Java Client with PEM Certificates
+
+```java
+import org.apache.pulsar.client.api.PulsarClient;
+
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar+ssl://broker.example.com:6651")
+    .tlsTrustCertsFilePath("/path/to/ca.cert.pem")
+    .enableTls(true)
+    .allowTlsInsecureConnection(false)
+    .enableTlsHostnameVerification(true)
+    .build();
+```
+
+### Java Client with KeyStore
+
+```java
+import org.apache.pulsar.client.api.PulsarClient;
+
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar+ssl://broker.example.com:6651")
+    .useKeyStoreTls(true)
+    .tlsTrustStoreType("JKS")
+    .tlsTrustStorePath("/path/to/client.truststore.jks")
+    .tlsTrustStorePassword("truststore-password")
+    .build();
+```
+
+### Mutual TLS (Client Certificates)
+
+```java
+import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.impl.auth.AuthenticationTls;
+import java.util.HashMap;
+import java.util.Map;
+
+// Configure TLS authentication
+Map<String, String> authParams = new HashMap<>();
+authParams.put("tlsCertFile", "/path/to/client.cert.pem");
+authParams.put("tlsKeyFile", "/path/to/client.key-pk8.pem");
+
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar+ssl://broker.example.com:6651")
+    .tlsTrustCertsFilePath("/path/to/ca.cert.pem")
+    .authentication(
+        AuthenticationTls.class.getName(),
+        authParams
+    )
+    .enableTls(true)
+    .allowTlsInsecureConnection(false)
+    .build();
+```
+
+### Python Client
+
+```python
+import pulsar
+
+client = pulsar.Client(
+    service_url='pulsar+ssl://broker.example.com:6651',
+    tls_trust_certs_file_path='/path/to/ca.cert.pem',
+    tls_allow_insecure_connection=False,
+    tls_hostname_verification=True
+)
+```
+
+### Go Client
+
+```go
+import (
+    "github.com/apache/pulsar-client-go/pulsar"
+)
+
+client, err := pulsar.NewClient(pulsar.ClientOptions{
+    URL:                   "pulsar+ssl://broker.example.com:6651",
+    TLSTrustCertsFilePath: "/path/to/ca.cert.pem",
+    TLSAllowInsecureConnection: false,
+    TLSValidateHostname:   true,
+})
+```
+
+### C++ Client
+
+```cpp
+#include <pulsar/Client.h>
+
+pulsar::ClientConfiguration config;
+config.setTlsTrustCertsFilePath("/path/to/ca.cert.pem");
+config.setTlsAllowInsecureConnection(false);
+config.setValidateHostName(true);
+
+pulsar::Client client("pulsar+ssl://broker.example.com:6651", config);
+```
+
+## Admin Client TLS
+
+Configure the Pulsar admin client for HTTPS:
+
+```java
+import org.apache.pulsar.client.admin.PulsarAdmin;
+
+PulsarAdmin admin = PulsarAdmin.builder()
+    .serviceHttpUrl("https://broker.example.com:8443")
+    .tlsTrustCertsFilePath("/path/to/ca.cert.pem")
+    .allowTlsInsecureConnection(false)
+    .enableTlsHostnameVerification(true)
+    .build();
+```
+
+## Inter-Broker TLS
+
+Secure communication between brokers in a cluster:
+
+```properties
+# broker.conf
+
+# Enable TLS for internal broker client
+brokerClientTlsEnabled=true
+
+# Trust certificates for broker-to-broker
+brokerClientTrustCertsFilePath=/path/to/ca.cert.pem
+
+# Client certificate for broker (mutual TLS)
+brokerClientCertificateFilePath=/path/to/broker-client.cert.pem
+brokerClientKeyFilePath=/path/to/broker-client.key-pk8.pem
+
+# TLS protocols
+brokerClientTlsProtocols=TLSv1.3,TLSv1.2
+
+# TLS ciphers
+brokerClientTlsCiphers=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+
+# TLS provider
+brokerClientSslProvider=OPENSSL
+```
+
+### KeyStore Configuration for Inter-Broker
+
+```properties
+# Use KeyStore for internal client
+brokerClientTlsEnabledWithKeyStore=true
+
+# KeyStore configuration
+brokerClientTlsKeyStoreType=JKS
+brokerClientTlsKeyStore=/path/to/broker-client.keystore.jks
+brokerClientTlsKeyStorePassword=keystore-password
+
+# TrustStore configuration
+brokerClientTlsTrustStoreType=JKS
+brokerClientTlsTrustStore=/path/to/broker-client.truststore.jks
+brokerClientTlsTrustStorePassword=truststore-password
+```
+
+## Proxy TLS Configuration
+
+Configure TLS for Pulsar proxy:
+
+```properties
+# proxy.conf
+
+# Enable TLS on proxy service port
+servicePortTls=6651
+
+# Enable TLS on proxy web service port
+webServicePortTls=8443
+
+# TLS certificate files
+tlsCertificateFilePath=/path/to/proxy.cert.pem
+tlsKeyFilePath=/path/to/proxy.key-pk8.pem
+tlsTrustCertsFilePath=/path/to/ca.cert.pem
+
+# Client certificate requirements
+tlsRequireTrustedClientCertOnConnect=false
+
+# TLS protocols and ciphers
+tlsProtocols=TLSv1.3,TLSv1.2
+tlsCiphers=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+
+# Enable TLS to brokers
+tlsEnabledWithBroker=true
+
+# Broker TLS configuration
+brokerClientTrustCertsFilePath=/path/to/ca.cert.pem
+brokerClientCertificateFilePath=/path/to/proxy-client.cert.pem
+brokerClientKeyFilePath=/path/to/proxy-client.key-pk8.pem
+```
+
+## BookKeeper TLS
+
+Encrypt traffic between brokers and BookKeeper:
+
+```properties
+# broker.conf
+
+# Enable BookKeeper TLS
+bookkeeperTLSClientAuthentication=true
+
+# BookKeeper TLS provider
+bookkeeperTLSProviderFactoryClass=org.apache.bookkeeper.tls.TLSContextFactory
+
+# BookKeeper trust certificates
+bookkeeperTLSTrustCertsFilePath=/path/to/ca.cert.pem
+
+# BookKeeper client certificate
+bookkeeperTLSClientCertificateFilePath=/path/to/broker-bk.cert.pem
+bookkeeperTLSClientKeyFilePath=/path/to/broker-bk.key-pk8.pem
+
+# Verify peer certificates
+bookkeeperTlsClientAuthenticationEnabled=true
+```
+
+## Certificate Generation
+
+### Generate CA Certificate
+
+```bash
+# Generate CA private key
+openssl genrsa -out ca.key 4096
+
+# Generate CA certificate (10 years)
+openssl req -new -x509 -days 3650 \
+  -key ca.key \
+  -out ca.cert.pem \
+  -subj "/CN=Pulsar-CA"
+```
+
+### Generate Broker Certificate
+
+```bash
+# Generate broker private key
+openssl genrsa -out broker.key 2048
+
+# Convert to PKCS#8 format (required by Pulsar)
+openssl pkcs8 -topk8 -inform PEM -outform PEM \
+  -in broker.key \
+  -out broker.key-pk8.pem \
+  -nocrypt
+
+# Generate certificate signing request
+openssl req -new \
+  -key broker.key \
+  -out broker.csr \
+  -subj "/CN=broker.example.com"
+
+# Sign with CA (2 years)
+openssl x509 -req -days 730 \
+  -in broker.csr \
+  -CA ca.cert.pem \
+  -CAkey ca.key \
+  -CAcreateserial \
+  -out broker.cert.pem
+
+# Verify certificate
+openssl verify -CAfile ca.cert.pem broker.cert.pem
+```
+
+### Generate Client Certificate
+
+```bash
+# Generate client private key
+openssl genrsa -out client.key 2048
+
+# Convert to PKCS#8 format
+openssl pkcs8 -topk8 -inform PEM -outform PEM \
+  -in client.key \
+  -out client.key-pk8.pem \
+  -nocrypt
+
+# Generate CSR
+openssl req -new \
+  -key client.key \
+  -out client.csr \
+  -subj "/CN=client-app"
+
+# Sign with CA
+openssl x509 -req -days 730 \
+  -in client.csr \
+  -CA ca.cert.pem \
+  -CAkey ca.key \
+  -CAcreateserial \
+  -out client.cert.pem
+```
+
+### Create KeyStore from PEM
+
+```bash
+# Convert PEM to PKCS12
+openssl pkcs12 -export \
+  -in broker.cert.pem \
+  -inkey broker.key \
+  -out broker.p12 \
+  -name broker \
+  -passout pass:keystore-password
+
+# Convert PKCS12 to JKS
+keytool -importkeystore \
+  -srckeystore broker.p12 \
+  -srcstoretype PKCS12 \
+  -srcstorepass keystore-password \
+  -destkeystore broker.keystore.jks \
+  -deststoretype JKS \
+  -deststorepass keystore-password
+
+# Import CA into TrustStore
+keytool -importcert \
+  -file ca.cert.pem \
+  -keystore broker.truststore.jks \
+  -storepass truststore-password \
+  -alias ca-root \
+  -noprompt
+```
+
+## Certificate Rotation
+
+Pulsar supports hot-reloading of TLS certificates:
+
+```properties
+# Check certificates every 5 minutes
+tlsCertRefreshCheckDurationSec=300
+```
+
+To rotate certificates:
+
+1. Generate new certificates signed by the same CA
+2. Replace certificate files on disk
+3. Pulsar will automatically reload them at the next check interval
+4. No broker restart required
+
+<Warning>
+When rotating CA certificates, ensure the new CA is in place before rotating broker/client certificates. Maintain overlapping trust periods to avoid connection failures.
+</Warning>
+
+## End-to-End Encryption
+
+In addition to TLS, Pulsar supports application-level message encryption:
+
+```java
+import org.apache.pulsar.client.api.*;
+import org.apache.pulsar.client.impl.crypto.MessageCryptoBc;
+
+// Configure encryption
+Producer<byte[]> producer = client.newProducer()
+    .topic("persistent://tenant/namespace/encrypted-topic")
+    .addEncryptionKey("my-encryption-key")
+    .defaultCryptoKeyReader("/path/to/public-keys")
+    .create();
+
+// Messages are encrypted before transmission
+producer.send("sensitive data".getBytes());
+
+// Configure decryption
+Consumer<byte[]> consumer = client.newConsumer()
+    .topic("persistent://tenant/namespace/encrypted-topic")
+    .subscriptionName("my-subscription")
+    .defaultCryptoKeyReader("/path/to/private-keys")
+    .subscribe();
+
+// Messages are decrypted after reception
+Message<byte[]> msg = consumer.receive();
+String data = new String(msg.getData());
+```
+
+End-to-end encryption ensures messages remain encrypted even on the broker.
+
+## Security Hardening
+
+### Disable Weak Protocols
+
+```properties
+# Only allow TLS 1.2 and 1.3
+tlsProtocols=TLSv1.3,TLSv1.2
+webServiceTlsProtocols=TLSv1.3,TLSv1.2
+brokerClientTlsProtocols=TLSv1.3,TLSv1.2
+```
+
+### Use Strong Cipher Suites
+
+```properties
+# Prefer forward secrecy ciphers
+tlsCiphers=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+webServiceTlsCiphers=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+brokerClientTlsCiphers=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+```
+
+### Enable Hostname Verification
+
+```properties
+# Verify broker hostnames match certificates
+tlsHostnameVerificationEnabled=true
+```
+
+### Require Client Certificates
+
+```properties
+# Enforce mutual TLS
+tlsRequireTrustedClientCertOnConnect=true
+```
+
+## Troubleshooting
+
+### TLS Handshake Failures
+
+**Error: "unable to find valid certification path"**
+```bash
+# Verify CA certificate is trusted
+openssl verify -CAfile ca.cert.pem broker.cert.pem
+
+# Check certificate chain
+openssl s_client -connect broker.example.com:6651 -showcerts
+```
+
+**Error: "certificate has expired"**
+```bash
+# Check certificate expiration
+openssl x509 -in broker.cert.pem -noout -dates
+
+# Rotate expired certificates
+```
+
+**Error: "Hostname verification failed"**
+```bash
+# Check certificate Common Name or SAN
+openssl x509 -in broker.cert.pem -noout -subject -ext subjectAltName
+
+# Ensure hostname matches certificate
+# Or disable verification (not recommended for production)
+tlsHostnameVerificationEnabled=false
+```
+
+### Permission Issues
+
+```bash
+# Verify file permissions
+ls -la /path/to/certs/
+
+# Fix permissions
+chmod 600 /path/to/certs/*.key
+chmod 644 /path/to/certs/*.pem
+chown pulsar:pulsar /path/to/certs/*
+```
+
+### Debug TLS Connections
+
+Enable TLS debugging:
+
+```bash
+# In pulsar_env.sh
+export PULSAR_EXTRA_OPTS="-Djavax.net.debug=ssl:handshake:verbose"
+```
+
+```yaml
+# In log4j2.yaml
+Logger:
+  - name: io.netty.handler.ssl
+    level: debug
+```
+
+### Test TLS Configuration
+
+```bash
+# Test broker TLS
+openssl s_client -connect broker.example.com:6651 \
+  -CAfile ca.cert.pem
+
+# Test web service TLS
+curl -v --cacert ca.cert.pem \
+  https://broker.example.com:8443/admin/v2/clusters
+
+# Test with client certificate
+curl -v --cacert ca.cert.pem \
+  --cert client.cert.pem \
+  --key client.key.pem \
+  https://broker.example.com:8443/admin/v2/clusters
+```
+
+## Best Practices
+
+<Warning>
+Follow these encryption best practices:
+</Warning>
+
+1. **Use TLS 1.2 or higher** - Disable TLS 1.0 and 1.1
+2. **Prefer TLS 1.3** - Use the latest protocol version when possible
+3. **Use strong cipher suites** - Prioritize forward secrecy ciphers
+4. **Enable hostname verification** - Prevent man-in-the-middle attacks
+5. **Implement certificate rotation** - Replace certificates before expiration
+6. **Use different certificates per environment** - Separate dev, staging, production
+7. **Protect private keys** - Store keys with restricted permissions
+8. **Use certificate pinning** - For critical client applications
+9. **Monitor certificate expiration** - Set up alerts for approaching expiry
+10. **Enable mutual TLS** - Authenticate both clients and servers
+11. **Use proper key lengths** - Minimum 2048-bit RSA or 256-bit ECDSA
+12. **Regular security audits** - Test TLS configuration with tools like SSL Labs
+
+## Performance Considerations
+
+TLS adds computational overhead. Optimize performance:
+
+- **Use OPENSSL provider** - Native implementation is faster than JDK
+- **Enable session resumption** - Reduce handshake overhead
+- **Use hardware acceleration** - AES-NI for cipher operations
+- **Prefer ECDSA certificates** - Faster than RSA for equivalent security
+- **Consider TLS 1.3** - Improved handshake performance
+
+```properties
+# Use OPENSSL for better performance
+tlsProvider=OPENSSL
+brokerClientSslProvider=OPENSSL
+webServiceTlsProvider=Conscrypt
+```
+
+## Next Steps
+
+<Card title="Authentication" icon="key" href="/security/authentication">
+  Configure authentication providers to verify client identity
+</Card>

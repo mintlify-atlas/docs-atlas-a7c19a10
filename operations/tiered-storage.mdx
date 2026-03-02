@@ -1,0 +1,380 @@
+---
+title: Tiered Storage
+description: Offload historical data to cost-effective cloud storage
+---
+
+Tiered storage allows Apache Pulsar to automatically offload older ledger data from BookKeeper to long-term storage systems like AWS S3, Google Cloud Storage, Azure Blob Storage, or local filesystems. This reduces storage costs while keeping data accessible.
+
+## Overview
+
+Tiered storage provides:
+
+- **Cost reduction** - Store historical data in cheaper cloud storage
+- **Infinite retention** - Keep data indefinitely without BookKeeper capacity limits
+- **Automatic offloading** - Offload based on time or size thresholds
+- **Transparent access** - Consumers can read offloaded data seamlessly
+- **Multiple backends** - Support for S3, GCS, Azure, filesystem, and custom implementations
+
+## How It Works
+
+1. Messages are written to BookKeeper as usual
+2. When configured thresholds are met, older ledgers are offloaded
+3. Ledger data is copied to tiered storage
+4. After a configurable delay, data is deleted from BookKeeper
+5. Consumers can read from both BookKeeper and tiered storage
+
+## Supported Storage Backends
+
+- **AWS S3** - Amazon Simple Storage Service
+- **Google Cloud Storage** - Google's object storage
+- **Azure Blob Storage** - Microsoft Azure blob storage
+- **Alibaba Cloud OSS** - Alibaba Cloud Object Storage Service
+- **Filesystem** - Local or network-mounted filesystems
+- **Custom** - Implement custom offloaders
+
+## Configuration
+
+### Global Broker Configuration
+
+Configure tiered storage in `broker.conf`:
+
+<ParamField path="managedLedgerOffloadDriver" type="string">
+  Driver to use for offloading data to long-term storage.
+  
+  **Options:** `aws-s3` | `google-cloud-storage` | `azureblob` | `aliyun-oss` | `filesystem` | `S3`
+</ParamField>
+
+<ParamField path="managedLedgerOffloadMaxThreads" type="integer" default="2">
+  Maximum number of thread pool threads for ledger offloading.
+</ParamField>
+
+<ParamField path="managedLedgerOffloadReadThreads" type="integer" default="2">
+  Maximum number of read thread pool threads for ledger offloading.
+</ParamField>
+
+<ParamField path="managedLedgerOffloadPrefetchRounds" type="integer" default="1">
+  Maximum prefetch rounds for ledger reading during offloading.
+</ParamField>
+
+<ParamField path="managedLedgerOffloadDeletionLagMs" type="integer" default="14400000">
+  Delay between successfully offloading a ledger and deleting it from BookKeeper. Default is 4 hours (14400000 ms).
+</ParamField>
+
+<ParamField path="managedLedgerOffloadAutoTriggerSizeThresholdBytes" type="integer" default="-1">
+  Number of bytes before triggering automatic offload to long-term storage. `-1` disables automatic offloading.
+</ParamField>
+
+<ParamField path="managedLedgerOffloadThresholdInSeconds" type="integer" default="-1">
+  Number of seconds before triggering automatic offload to long-term storage. `-1` disables time-based offloading.
+</ParamField>
+
+<ParamField path="offloadersDirectory" type="string" default="./offloaders">
+  Directory containing offloader implementations (NAR files).
+</ParamField>
+
+### AWS S3 Configuration
+
+Configure S3 as the offload target:
+
+<ParamField path="managedLedgerOffloadDriver" type="string" default="aws-s3">
+  Set to `aws-s3` for Amazon S3 offloading.
+</ParamField>
+
+<ParamField path="s3ManagedLedgerOffloadRegion" type="string">
+  AWS region where the S3 bucket is located (e.g., `us-west-2`).
+</ParamField>
+
+<ParamField path="s3ManagedLedgerOffloadBucket" type="string">
+  S3 bucket name for storing offloaded ledgers.
+</ParamField>
+
+<ParamField path="s3ManagedLedgerOffloadServiceEndpoint" type="string">
+  Alternative S3 endpoint to connect to (useful for S3-compatible storage or testing).
+</ParamField>
+
+<ParamField path="s3ManagedLedgerOffloadMaxBlockSizeInBytes" type="integer" default="67108864">
+  Maximum block size in bytes (64 MiB default, 5 MiB minimum).
+</ParamField>
+
+<ParamField path="s3ManagedLedgerOffloadReadBufferSizeInBytes" type="integer" default="1048576">
+  Read buffer size in bytes (1 MiB default).
+</ParamField>
+
+Example configuration:
+
+```properties
+# broker.conf
+managedLedgerOffloadDriver=aws-s3
+s3ManagedLedgerOffloadRegion=us-west-2
+s3ManagedLedgerOffloadBucket=pulsar-offload
+managedLedgerOffloadAutoTriggerSizeThresholdBytes=1073741824  # 1 GB
+managedLedgerOffloadDeletionLagMs=3600000  # 1 hour
+```
+
+### Google Cloud Storage Configuration
+
+Configure GCS as the offload target:
+
+<ParamField path="managedLedgerOffloadDriver" type="string" default="google-cloud-storage">
+  Set to `google-cloud-storage` for GCS offloading.
+</ParamField>
+
+<ParamField path="gcsManagedLedgerOffloadRegion" type="string">
+  GCS region where the bucket is located (e.g., `us-central1`).
+</ParamField>
+
+<ParamField path="gcsManagedLedgerOffloadBucket" type="string">
+  GCS bucket name for storing offloaded ledgers.
+</ParamField>
+
+<ParamField path="gcsManagedLedgerOffloadMaxBlockSizeInBytes" type="integer" default="134217728">
+  Maximum block size in bytes (128 MiB default, 5 MiB minimum). Maximum ledger size is 32 times the block size due to JClouds limitations.
+</ParamField>
+
+<ParamField path="gcsManagedLedgerOffloadReadBufferSizeInBytes" type="integer" default="1048576">
+  Read buffer size in bytes (1 MiB default).
+</ParamField>
+
+<ParamField path="gcsManagedLedgerOffloadServiceAccountKeyFile" type="string">
+  Path to JSON file containing service account credentials.
+</ParamField>
+
+Example configuration:
+
+```properties
+# broker.conf
+managedLedgerOffloadDriver=google-cloud-storage
+gcsManagedLedgerOffloadRegion=us-central1
+gcsManagedLedgerOffloadBucket=pulsar-offload
+gcsManagedLedgerOffloadServiceAccountKeyFile=/path/to/service-account.json
+managedLedgerOffloadAutoTriggerSizeThresholdBytes=1073741824
+```
+
+### Azure Blob Storage Configuration
+
+```properties
+# broker.conf
+managedLedgerOffloadDriver=azureblob
+managedLedgerOffloadBucket=pulsar-offload-container
+managedLedgerOffloadAutoTriggerSizeThresholdBytes=1073741824
+```
+
+### Filesystem Configuration
+
+For local or network-mounted filesystems:
+
+<ParamField path="managedLedgerOffloadDriver" type="string" default="filesystem">
+  Set to `filesystem` for local/network filesystem offloading.
+</ParamField>
+
+<ParamField path="fileSystemURI" type="string">
+  Filesystem URI (e.g., `file:///mnt/offload` or `hdfs://namenode:8020/pulsar`).
+</ParamField>
+
+<ParamField path="fileSystemProfilePath" type="string" default="conf/filesystem_offload_core_site.xml">
+  Path to Hadoop configuration file for HDFS filesystems.
+</ParamField>
+
+```properties
+# broker.conf
+managedLedgerOffloadDriver=filesystem
+fileSystemURI=file:///mnt/offload
+managedLedgerOffloadAutoTriggerSizeThresholdBytes=1073741824
+```
+
+## Namespace-Level Configuration
+
+Override global settings for specific namespaces:
+
+```bash
+# Set offload threshold for namespace
+pulsar-admin namespaces set-offload-threshold \
+  tenant/namespace \
+  --size 10G
+
+# Set offload deletion lag
+pulsar-admin namespaces set-offload-deletion-lag \
+  tenant/namespace \
+  --lag 1h
+```
+
+## Manual Offloading
+
+Trigger offload manually for a topic:
+
+```bash
+# Offload all data before specific message ID
+pulsar-admin topics offload \
+  persistent://tenant/namespace/topic \
+  --size-threshold 1G
+
+# Check offload status
+pulsar-admin topics offload-status \
+  persistent://tenant/namespace/topic
+```
+
+## Reading Offloaded Data
+
+Consumers automatically read from tiered storage when necessary. Configure read priority:
+
+<ParamField path="managedLedgerDataReadPriority" type="string" default="tiered-storage-first">
+  Read priority when ledgers exist in both BookKeeper and tiered storage.
+  
+  **Options:**
+  - `tiered-storage-first` - Prefer reading from tiered storage
+  - `bookkeeper-first` - Prefer reading from BookKeeper
+</ParamField>
+
+## Monitoring
+
+### Offload Metrics
+
+```
+# Offload operations
+rate(pulsar_managedLedger_offload_success_total[5m])
+rate(pulsar_managedLedger_offload_failure_total[5m])
+
+# Offload latency
+pulsar_managedLedger_offload_duration_bucket
+
+# Data offloaded
+rate(pulsar_managedLedger_offload_bytes_total[5m])
+```
+
+### Check Offload Status
+
+```bash
+# Topic stats show offloaded ledgers
+pulsar-admin topics stats-internal persistent://tenant/namespace/topic
+
+# Check specific offload operation
+pulsar-admin topics offload-status persistent://tenant/namespace/topic
+```
+
+## Storage Structure
+
+Offloaded data is organized in the storage backend:
+
+```
+bucket/
+  managed-ledgers/
+    tenant/
+      namespace/
+        persistent/
+          topic-partition-0/
+            ledger-12345-0-index
+            ledger-12345-0-data
+            ledger-12346-0-index
+            ledger-12346-0-data
+```
+
+## Cost Optimization
+
+### Storage Class Selection
+
+Use appropriate storage classes for cost savings:
+
+- **AWS S3** - Use S3 Standard-IA or S3 Glacier for infrequent access
+- **GCS** - Use Nearline or Coldline storage classes
+- **Azure** - Use Cool or Archive tiers
+
+### Lifecycle Policies
+
+Configure storage lifecycle policies to transition data:
+
+```json
+// AWS S3 lifecycle policy example
+{
+  "Rules": [
+    {
+      "Id": "TransitionToIA",
+      "Status": "Enabled",
+      "Transitions": [
+        {
+          "Days": 30,
+          "StorageClass": "STANDARD_IA"
+        },
+        {
+          "Days": 90,
+          "StorageClass": "GLACIER"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Security
+
+### AWS IAM Permissions
+
+Required S3 permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::pulsar-offload",
+        "arn:aws:s3:::pulsar-offload/*"
+      ]
+    }
+  ]
+}
+```
+
+### Encryption
+
+Enable server-side encryption:
+
+- **AWS S3** - Use SSE-S3, SSE-KMS, or SSE-C
+- **GCS** - Use Google-managed or customer-managed encryption keys
+- **Azure** - Use Azure Storage Service Encryption
+
+## Troubleshooting
+
+### Offload Failures
+
+Check broker logs for errors:
+
+```bash
+grep "offload" logs/pulsar-broker-*.log
+```
+
+Common issues:
+- Insufficient permissions on storage bucket
+- Network connectivity to cloud storage
+- Invalid credentials or configuration
+- Insufficient disk space for temporary files
+
+### Performance Issues
+
+1. Increase offload threads:
+   ```properties
+   managedLedgerOffloadMaxThreads=4
+   ```
+
+2. Adjust block sizes for better throughput
+
+3. Monitor read latency from tiered storage
+
+## Best Practices
+
+1. **Set appropriate thresholds** - Balance BookKeeper capacity with offload frequency
+2. **Use size-based thresholds** - More predictable than time-based for cost control
+3. **Configure deletion lag** - Allow time for data verification before deletion
+4. **Monitor costs** - Track storage costs in cloud provider billing
+5. **Test recovery** - Verify consumers can read offloaded data
+6. **Plan for latency** - Cloud storage has higher latency than BookKeeper
+7. **Use lifecycle policies** - Automatically transition to cheaper storage classes
+8. **Secure credentials** - Use IAM roles or service accounts instead of static credentials
+9. **Regional storage** - Co-locate storage with Pulsar clusters for lower latency
+10. **Backup strategy** - Combine tiered storage with separate backup procedures

@@ -1,0 +1,739 @@
+---
+title: pulsar-admin
+description: Pulsar admin CLI tool for managing clusters, tenants, namespaces, topics, and more.
+---
+
+The `pulsar-admin` tool is the administrative CLI for Apache Pulsar. It provides commands to manage and monitor all aspects of a Pulsar cluster.
+
+## Usage
+
+```bash
+pulsar-admin [options] [command] [command options]
+```
+
+## Global Options
+
+| Option | Description |
+|--------|-------------|
+| `--admin-url` | Admin Service URL to connect to |
+| `--auth-plugin` | Authentication plugin class name |
+| `--auth-params` | Authentication parameters in key:value format |
+| `--request-timeout` | Request timeout in seconds (default: 300) |
+| `--tls-allow-insecure` | Allow insecure TLS connections |
+| `--tls-trust-cert-path` | Path to TLS trust certificates |
+| `--tls-enable-hostname-verification` | Enable TLS hostname verification |
+| `--tls-provider` | TLS provider (OPENSSL or JDK) |
+| `-h, --help` | Display help information |
+| `-v` | Display version information |
+
+## Available Commands
+
+### Cluster Management
+
+#### clusters
+
+Manage Pulsar clusters.
+
+<CodeGroup>
+```bash List clusters
+pulsar-admin clusters list
+```
+
+```bash Get cluster info
+pulsar-admin clusters get my-cluster
+```
+
+```bash Create cluster
+pulsar-admin clusters create my-cluster \
+  --url http://pulsar.example.com:8080 \
+  --broker-url pulsar://pulsar.example.com:6650
+```
+
+```bash Update cluster
+pulsar-admin clusters update my-cluster \
+  --url http://pulsar.example.com:8080
+```
+
+```bash Delete cluster
+pulsar-admin clusters delete my-cluster
+```
+</CodeGroup>
+
+**Subcommands:**
+- `list` - List all clusters
+- `get` - Get cluster configuration
+- `create` - Create a new cluster
+- `update` - Update cluster configuration
+- `delete` - Delete a cluster
+- `update-peer-clusters` - Update peer cluster list
+- `get-peer-clusters` - Get peer clusters
+- `get-failure-domain` - Get failure domain configuration
+- `create-failure-domain` - Create failure domain
+- `update-failure-domain` - Update failure domain
+- `delete-failure-domain` - Delete failure domain
+- `list-failure-domains` - List all failure domains
+
+### Tenant Management
+
+#### tenants
+
+Manage Pulsar tenants (formerly called properties).
+
+<CodeGroup>
+```bash List tenants
+pulsar-admin tenants list
+```
+
+```bash Create tenant
+pulsar-admin tenants create my-tenant \
+  --admin-roles admin-role \
+  --allowed-clusters my-cluster
+```
+
+```bash Get tenant info
+pulsar-admin tenants get my-tenant
+```
+
+```bash Update tenant
+pulsar-admin tenants update my-tenant \
+  --admin-roles admin-role,new-admin \
+  --allowed-clusters my-cluster,cluster2
+```
+
+```bash Delete tenant
+pulsar-admin tenants delete my-tenant
+```
+</CodeGroup>
+
+**Subcommands:**
+- `list` - List all tenants
+- `get` - Get tenant configuration
+- `create` - Create a new tenant
+- `update` - Update tenant configuration
+- `delete` - Delete a tenant
+
+### Namespace Management
+
+#### namespaces
+
+Manage Pulsar namespaces.
+
+<CodeGroup>
+```bash List namespaces
+pulsar-admin namespaces list my-tenant
+```
+
+```bash Create namespace
+pulsar-admin namespaces create my-tenant/my-namespace
+```
+
+```bash Get namespace policies
+pulsar-admin namespaces policies my-tenant/my-namespace
+```
+
+```bash Delete namespace
+pulsar-admin namespaces delete my-tenant/my-namespace
+```
+
+```bash Set retention
+pulsar-admin namespaces set-retention my-tenant/my-namespace \
+  --size 10G \
+  --time 3h
+```
+
+```bash Set message TTL
+pulsar-admin namespaces set-message-ttl my-tenant/my-namespace \
+  --messageTTL 3600
+```
+</CodeGroup>
+
+**Subcommands:**
+- `list` - List namespaces for a tenant
+- `topics` - Get list of topics in a namespace
+- `policies` - Get namespace policies
+- `create` - Create a namespace
+- `delete` - Delete a namespace
+- `set-retention` - Set retention policy
+- `get-retention` - Get retention policy
+- `set-message-ttl` - Set message TTL
+- `get-message-ttl` - Get message TTL
+- `set-backlog-quota` - Set backlog quota
+- `get-backlog-quotas` - Get backlog quotas
+- `set-persistence` - Set persistence policies
+- `get-persistence` - Get persistence policies
+- `set-replication-clusters` - Set replication clusters
+- `get-replication-clusters` - Get replication clusters
+- `set-deduplication` - Enable/disable deduplication
+- `set-auto-topic-creation` - Configure auto topic creation
+- `set-auto-subscription-creation` - Configure auto subscription creation
+- `unload` - Unload a namespace
+- `clear-backlog` - Clear backlog
+
+### Topic Management
+
+#### topics
+
+Manage Pulsar topics (persistent and non-persistent).
+
+<CodeGroup>
+```bash List topics
+pulsar-admin topics list my-tenant/my-namespace
+```
+
+```bash Create partitioned topic
+pulsar-admin topics create-partitioned-topic \
+  persistent://my-tenant/my-namespace/my-topic \
+  --partitions 4
+```
+
+```bash Get topic stats
+pulsar-admin topics stats \
+  persistent://my-tenant/my-namespace/my-topic
+```
+
+```bash Get internal stats
+pulsar-admin topics stats-internal \
+  persistent://my-tenant/my-namespace/my-topic
+```
+
+```bash Delete topic
+pulsar-admin topics delete \
+  persistent://my-tenant/my-namespace/my-topic
+```
+
+```bash Unload topic
+pulsar-admin topics unload \
+  persistent://my-tenant/my-namespace/my-topic
+```
+</CodeGroup>
+
+**Subcommands:**
+- `list` - List all topics in namespace
+- `list-partitioned-topics` - List partitioned topics
+- `permissions` - Get topic permissions
+- `grant-permission` - Grant permission to a role
+- `revoke-permission` - Revoke permission from a role
+- `lookup` - Lookup topic owner broker
+- `partitioned-lookup` - Lookup partitioned topic
+- `bundle-range` - Get bundle range of a topic
+- `delete` - Delete a topic
+- `unload` - Unload a topic
+- `subscriptions` - List subscriptions
+- `unsubscribe` - Delete a subscription
+- `create-subscription` - Create a subscription
+- `stats` - Get topic stats
+- `stats-internal` - Get internal stats
+- `info-internal` - Get internal metadata info
+- `partitioned-stats` - Get partitioned topic stats
+- `skip` - Skip messages for a subscription
+- `clear-backlog` - Clear backlog for a subscription
+- `expire-messages` - Expire messages
+- `expire-messages-all-subscriptions` - Expire messages for all subscriptions
+- `create-partitioned-topic` - Create partitioned topic
+- `create` - Create non-partitioned topic
+- `update-partitioned-topic` - Update partitioned topic
+- `get-partitioned-topic-metadata` - Get partitioned topic metadata
+- `delete-partitioned-topic` - Delete partitioned topic
+- `peek-messages` - Peek messages
+- `examine-messages` - Examine messages
+- `get-message-by-id` - Get message by ID
+- `reset-cursor` - Reset subscription cursor
+- `terminate` - Terminate topic
+- `compact` - Trigger compaction
+- `compaction-status` - Get compaction status
+- `offload` - Trigger offload
+- `offload-status` - Get offload status
+- `last-message-id` - Get last message ID
+- `get-backlog-quotas` - Get backlog quotas
+- `set-backlog-quota` - Set backlog quota
+- `get-message-ttl` - Get message TTL
+- `set-message-ttl` - Set message TTL
+- `get-retention` - Get retention policy
+- `set-retention` - Set retention policy
+
+### Broker Management
+
+#### brokers
+
+Manage Pulsar brokers.
+
+<CodeGroup>
+```bash List active brokers
+pulsar-admin brokers list my-cluster
+```
+
+```bash Get leader broker
+pulsar-admin brokers leader-broker
+```
+
+```bash List namespaces owned by broker
+pulsar-admin brokers namespaces my-cluster \
+  --url http://broker-host:8080
+```
+
+```bash Update dynamic config
+pulsar-admin brokers update-dynamic-config \
+  --config brokerShutdownTimeoutMs \
+  --value 60000
+```
+
+```bash Get all dynamic configs
+pulsar-admin brokers get-all-dynamic-config
+```
+</CodeGroup>
+
+**Subcommands:**
+- `list` - List active brokers
+- `leader-broker` - Get leader broker
+- `namespaces` - List namespaces owned by broker
+- `update-dynamic-config` - Update dynamic configuration
+- `get-all-dynamic-config` - Get all dynamic configs
+- `list-dynamic-config` - List dynamic config names
+- `get-internal-config` - Get internal configuration
+- `get-runtime-config` - Get runtime configuration
+- `healthcheck` - Perform health check
+
+#### broker-stats
+
+Get broker statistics.
+
+<CodeGroup>
+```bash Get monitoring metrics
+pulsar-admin broker-stats monitoring-metrics
+```
+
+```bash Get allocator stats
+pulsar-admin broker-stats allocator-stats allocator-name
+```
+
+```bash Get load report
+pulsar-admin broker-stats load-report
+```
+</CodeGroup>
+
+### Schema Management
+
+#### schemas
+
+Manage topic schemas.
+
+<CodeGroup>
+```bash Get schema
+pulsar-admin schemas get \
+  persistent://my-tenant/my-namespace/my-topic
+```
+
+```bash Upload schema
+pulsar-admin schemas upload \
+  persistent://my-tenant/my-namespace/my-topic \
+  --filename schema.json
+```
+
+```bash Delete schema
+pulsar-admin schemas delete \
+  persistent://my-tenant/my-namespace/my-topic
+```
+
+```bash Get all versions
+pulsar-admin schemas get-all-versions \
+  persistent://my-tenant/my-namespace/my-topic
+```
+</CodeGroup>
+
+**Subcommands:**
+- `get` - Get latest schema
+- `get-all-versions` - Get all schema versions
+- `delete` - Delete schema
+- `upload` - Upload a new schema
+- `extract` - Extract schema definition
+- `test-compatibility` - Test schema compatibility
+
+### Functions Management
+
+#### functions
+
+Manage Pulsar Functions.
+
+<CodeGroup>
+```bash Create function
+pulsar-admin functions create \
+  --tenant my-tenant \
+  --namespace my-namespace \
+  --name my-function \
+  --jar my-function.jar \
+  --classname org.example.MyFunction \
+  --inputs input-topic \
+  --output output-topic
+```
+
+```bash List functions
+pulsar-admin functions list \
+  --tenant my-tenant \
+  --namespace my-namespace
+```
+
+```bash Get function info
+pulsar-admin functions get \
+  --tenant my-tenant \
+  --namespace my-namespace \
+  --name my-function
+```
+
+```bash Get function status
+pulsar-admin functions status \
+  --tenant my-tenant \
+  --namespace my-namespace \
+  --name my-function
+```
+
+```bash Delete function
+pulsar-admin functions delete \
+  --tenant my-tenant \
+  --namespace my-namespace \
+  --name my-function
+```
+</CodeGroup>
+
+**Subcommands:**
+- `create` - Create a function
+- `update` - Update a function
+- `delete` - Delete a function
+- `get` - Get function info
+- `list` - List all functions
+- `status` - Get function status
+- `stats` - Get function stats
+- `restart` - Restart function instance
+- `stop` - Stop function instance
+- `start` - Start function instance
+- `trigger` - Trigger function
+- `upload` - Upload function package
+- `download` - Download function package
+- `querystate` - Query function state
+- `putstate` - Put function state
+
+#### sources
+
+Manage Pulsar IO sources.
+
+<CodeGroup>
+```bash Create source
+pulsar-admin sources create \
+  --tenant my-tenant \
+  --namespace my-namespace \
+  --name my-source \
+  --archive pulsar-io-kafka-3.0.0.nar \
+  --destination-topic-name output-topic
+```
+
+```bash List sources
+pulsar-admin sources list \
+  --tenant my-tenant \
+  --namespace my-namespace
+```
+
+```bash Get source status
+pulsar-admin sources status \
+  --tenant my-tenant \
+  --namespace my-namespace \
+  --name my-source
+```
+</CodeGroup>
+
+#### sinks
+
+Manage Pulsar IO sinks.
+
+<CodeGroup>
+```bash Create sink
+pulsar-admin sinks create \
+  --tenant my-tenant \
+  --namespace my-namespace \
+  --name my-sink \
+  --archive pulsar-io-jdbc-3.0.0.nar \
+  --inputs input-topic
+```
+
+```bash List sinks
+pulsar-admin sinks list \
+  --tenant my-tenant \
+  --namespace my-namespace
+```
+
+```bash Get sink status
+pulsar-admin sinks status \
+  --tenant my-tenant \
+  --namespace my-namespace \
+  --name my-sink
+```
+</CodeGroup>
+
+### Resource Management
+
+#### resourcegroups
+
+Manage resource groups.
+
+<CodeGroup>
+```bash Create resource group
+pulsar-admin resourcegroups create my-rg
+```
+
+```bash List resource groups
+pulsar-admin resourcegroups list
+```
+
+```bash Get resource group
+pulsar-admin resourcegroups get my-rg
+```
+
+```bash Update resource group
+pulsar-admin resourcegroups update my-rg \
+  --publish-rate-msgs-per-sec 1000
+```
+
+```bash Delete resource group
+pulsar-admin resourcegroups delete my-rg
+```
+</CodeGroup>
+
+#### resource-quotas
+
+Manage resource quotas for namespaces.
+
+<CodeGroup>
+```bash Get resource quota
+pulsar-admin resource-quotas get
+```
+
+```bash Set resource quota
+pulsar-admin resource-quotas set \
+  --namespace my-tenant/my-namespace \
+  --msgRateIn 100 \
+  --msgRateOut 200
+```
+</CodeGroup>
+
+### BookKeeper Management
+
+#### bookies
+
+Manage BookKeeper bookies.
+
+<CodeGroup>
+```bash List bookies
+pulsar-admin bookies list-bookies
+```
+
+```bash Get bookie rack info
+pulsar-admin bookies racks-placement
+```
+
+```bash Get bookie info
+pulsar-admin bookies get-bookie-info \
+  --bookie-address bookie1:3181
+```
+</CodeGroup>
+
+**Subcommands:**
+- `list-bookies` - List all bookies
+- `racks-placement` - Get rack placement info
+- `get-bookie-info` - Get bookie info
+- `delete-bookie-rack` - Delete bookie rack info
+- `set-bookie-rack` - Set bookie rack info
+
+### Namespace Isolation
+
+#### ns-isolation-policy
+
+Manage namespace isolation policies.
+
+<CodeGroup>
+```bash Set policy
+pulsar-admin ns-isolation-policy set \
+  --cluster my-cluster \
+  --policy my-policy \
+  --namespaces "my-tenant/my-ns.*" \
+  --primary "broker1.*"
+```
+
+```bash Get policy
+pulsar-admin ns-isolation-policy get \
+  --cluster my-cluster \
+  --policy my-policy
+```
+
+```bash List policies
+pulsar-admin ns-isolation-policy list --cluster my-cluster
+```
+
+```bash Delete policy
+pulsar-admin ns-isolation-policy delete \
+  --cluster my-cluster \
+  --policy my-policy
+```
+</CodeGroup>
+
+### Transaction Management
+
+#### transactions
+
+Manage transactions.
+
+<CodeGroup>
+```bash Get coordinator stats
+pulsar-admin transactions coordinator-stats
+```
+
+```bash Get transaction metadata
+pulsar-admin transactions get-transaction-metadata \
+  --transaction-id "1:0:0"
+```
+
+```bash Get pending ack stats
+pulsar-admin transactions get-pending-ack-stats \
+  --topic persistent://my-tenant/my-namespace/my-topic \
+  --subscription my-sub
+```
+</CodeGroup>
+
+### Package Management
+
+#### packages
+
+Manage function/connector packages.
+
+<CodeGroup>
+```bash Upload package
+pulsar-admin packages upload \
+  --path function://public/default/my-function@1.0 \
+  --jar my-function.jar
+```
+
+```bash Download package
+pulsar-admin packages download \
+  --path function://public/default/my-function@1.0 \
+  --output-file /tmp/my-function.jar
+```
+
+```bash List packages
+pulsar-admin packages list \
+  --type function \
+  my-tenant/my-namespace
+```
+
+```bash Get package metadata
+pulsar-admin packages get-metadata \
+  --path function://public/default/my-function@1.0
+```
+</CodeGroup>
+
+### Proxy Statistics
+
+#### proxy-stats
+
+Get proxy statistics.
+
+<CodeGroup>
+```bash Get connections
+pulsar-admin proxy-stats connections
+```
+
+```bash Get topics
+pulsar-admin proxy-stats topics
+```
+</CodeGroup>
+
+## Examples
+
+### Complete Workflow: Create and Configure a Topic
+
+```bash
+# Create a tenant
+pulsar-admin tenants create my-company \
+  --admin-roles admin \
+  --allowed-clusters cluster1
+
+# Create a namespace
+pulsar-admin namespaces create my-company/applications
+
+# Configure namespace retention
+pulsar-admin namespaces set-retention my-company/applications \
+  --size 100G \
+  --time 7d
+
+# Set message TTL
+pulsar-admin namespaces set-message-ttl my-company/applications \
+  --messageTTL 86400
+
+# Create a partitioned topic
+pulsar-admin topics create-partitioned-topic \
+  persistent://my-company/applications/events \
+  --partitions 4
+
+# Grant permissions
+pulsar-admin topics grant-permission \
+  persistent://my-company/applications/events \
+  --role app-role \
+  --actions produce,consume
+
+# Get topic stats
+pulsar-admin topics stats \
+  persistent://my-company/applications/events
+```
+
+### Monitor and Troubleshoot
+
+```bash
+# Check broker health
+pulsar-admin brokers healthcheck
+
+# Get topic internal stats
+pulsar-admin topics stats-internal \
+  persistent://my-company/applications/events
+
+# List subscriptions
+pulsar-admin topics subscriptions \
+  persistent://my-company/applications/events
+
+# Check subscription backlog
+pulsar-admin topics stats \
+  persistent://my-company/applications/events
+
+# Clear backlog for a subscription
+pulsar-admin topics clear-backlog \
+  persistent://my-company/applications/events \
+  --subscription my-sub
+
+# Peek messages
+pulsar-admin topics peek-messages \
+  persistent://my-company/applications/events \
+  --subscription my-sub \
+  --count 10
+```
+
+## Configuration
+
+Create a configuration file at `conf/client.conf`:
+
+```properties
+webServiceUrl=http://localhost:8080
+authPlugin=org.apache.pulsar.client.impl.auth.AuthenticationToken
+authParams=token:eyJhbGciOiJIUzI1NiJ9...
+tlsAllowInsecureConnection=false
+tlsEnableHostnameVerification=true
+tlsTrustCertsFilePath=/path/to/ca.cert.pem
+```
+
+Use the configuration:
+
+```bash
+pulsar-admin --admin-url http://pulsar.example.com:8080 \
+  --auth-plugin org.apache.pulsar.client.impl.auth.AuthenticationToken \
+  --auth-params token:eyJhbGciOiJIUzI1NiJ9... \
+  tenants list
+```
+
+## Related Commands
+
+- [pulsar-client](/cli/pulsar-client) - Produce and consume messages
+- [pulsar](/cli/pulsar) - Run Pulsar components

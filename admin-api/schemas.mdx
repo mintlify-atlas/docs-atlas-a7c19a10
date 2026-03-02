@@ -1,0 +1,614 @@
+---
+title: "Schemas API"
+description: "REST API endpoints for managing Pulsar schemas, versioning, and compatibility"
+---
+
+## Overview
+
+Schemas define the structure of messages in Pulsar topics. The Schemas API allows you to register, retrieve, update, and delete schemas, as well as test schema compatibility. Pulsar supports multiple schema types including Avro, JSON, Protobuf, and more.
+
+**Base Path**: `/admin/v2/schemas`
+
+## Get Schema
+
+Retrieve the current schema for a topic.
+
+```http
+GET /admin/v2/schemas/{tenant}/{namespace}/{topic}/schema
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+<ParamField path="namespace" type="string" required>
+  The namespace name
+</ParamField>
+
+<ParamField path="topic" type="string" required>
+  The topic name
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="authoritative" type="boolean" default="false">
+  Whether this broker is authoritative for the topic
+</ParamField>
+
+### Response
+
+<ResponseField name="version" type="integer">
+  Schema version number
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  Schema type (AVRO, JSON, PROTOBUF, etc.)
+</ResponseField>
+
+<ResponseField name="timestamp" type="integer">
+  Schema creation timestamp
+</ResponseField>
+
+<ResponseField name="data" type="string">
+  Base64-encoded schema definition
+</ResponseField>
+
+<ResponseField name="properties" type="object">
+  Additional schema metadata
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/schemas/my-tenant/my-namespace/my-topic/schema \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+SchemaInfo schema = admin.schemas().getSchemaInfo(
+    "persistent://my-tenant/my-namespace/my-topic"
+);
+```
+
+```python Python
+schema = admin.schemas().get_schema_info("persistent://my-tenant/my-namespace/my-topic")
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+{
+  "version": 0,
+  "type": "AVRO",
+  "timestamp": 1640000000000,
+  "data": "eyJ0eXBlIjogInJlY29yZCIsICJuYW1lIjogIlVzZXIiLCAiZmllbGRzIjogW3sibmFtZSI6ICJpZCIsICJ0eXBlIjogImludCJ9LCB7Im5hbWUiOiAibmFtZSIsICJ0eXBlIjogInN0cmluZyJ9XX0=",
+  "properties": {
+    "key1": "value1"
+  }
+}
+```
+
+## Get Schema by Version
+
+Retrieve a specific version of a schema.
+
+```http
+GET /admin/v2/schemas/{tenant}/{namespace}/{topic}/schema/{version}
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+<ParamField path="namespace" type="string" required>
+  The namespace name
+</ParamField>
+
+<ParamField path="topic" type="string" required>
+  The topic name
+</ParamField>
+
+<ParamField path="version" type="string" required>
+  Schema version number or "latest"
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/schemas/my-tenant/my-namespace/my-topic/schema/2 \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+SchemaInfo schema = admin.schemas().getSchemaInfo(
+    "persistent://my-tenant/my-namespace/my-topic",
+    2L
+);
+```
+</CodeGroup>
+
+## Get All Schemas
+
+Retrieve all schema versions for a topic.
+
+```http
+GET /admin/v2/schemas/{tenant}/{namespace}/{topic}/schemas
+```
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/schemas/my-tenant/my-namespace/my-topic/schemas \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+List<SchemaInfo> schemas = admin.schemas().getAllSchemas(
+    "persistent://my-tenant/my-namespace/my-topic"
+);
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+[
+  {
+    "version": 0,
+    "type": "AVRO",
+    "timestamp": 1640000000000,
+    "data": "...",
+    "properties": {}
+  },
+  {
+    "version": 1,
+    "type": "AVRO",
+    "timestamp": 1640100000000,
+    "data": "...",
+    "properties": {}
+  }
+]
+```
+
+## Upload Schema
+
+Register or update a schema for a topic.
+
+```http
+POST /admin/v2/schemas/{tenant}/{namespace}/{topic}/schema
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+<ParamField path="namespace" type="string" required>
+  The namespace name
+</ParamField>
+
+<ParamField path="topic" type="string" required>
+  The topic name
+</ParamField>
+
+### Request Body
+
+<ParamField body="type" type="string" required>
+  Schema type: AVRO, JSON, PROTOBUF, STRING, BYTES, etc.
+</ParamField>
+
+<ParamField body="schema" type="string" required>
+  Schema definition (format depends on type)
+</ParamField>
+
+<ParamField body="properties" type="object">
+  Additional metadata key-value pairs
+</ParamField>
+
+### Example - Avro Schema
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/schemas/my-tenant/my-namespace/my-topic/schema \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "AVRO",
+    "schema": "{\"type\":\"record\",\"name\":\"User\",\"fields\":[{\"name\":\"id\",\"type\":\"int\"},{\"name\":\"name\",\"type\":\"string\"}]}",
+    "properties": {
+      "owner": "team-a"
+    }
+  }'
+```
+
+```java Java
+String avroSchema = "{\"type\":\"record\",\"name\":\"User\",\"fields\":[{\"name\":\"id\",\"type\":\"int\"},{\"name\":\"name\",\"type\":\"string\"}]}";
+
+SchemaInfo schemaInfo = SchemaInfo.builder()
+    .type(SchemaType.AVRO)
+    .schema(avroSchema.getBytes())
+    .properties(Map.of("owner", "team-a"))
+    .build();
+
+admin.schemas().createSchema(
+    "persistent://my-tenant/my-namespace/my-topic",
+    schemaInfo
+);
+```
+
+```python Python
+import json
+
+avro_schema = {
+    "type": "record",
+    "name": "User",
+    "fields": [
+        {"name": "id", "type": "int"},
+        {"name": "name", "type": "string"}
+    ]
+}
+
+schema_info = {
+    "type": "AVRO",
+    "schema": json.dumps(avro_schema),
+    "properties": {"owner": "team-a"}
+}
+
+admin.schemas().create_schema(
+    "persistent://my-tenant/my-namespace/my-topic",
+    schema_info
+)
+```
+</CodeGroup>
+
+### Example - JSON Schema
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/schemas/my-tenant/my-namespace/my-topic/schema \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "JSON",
+    "schema": "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"name\"]}",
+    "properties": {}
+  }'
+```
+
+```java Java
+String jsonSchema = "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"name\"]}";
+
+SchemaInfo schemaInfo = SchemaInfo.builder()
+    .type(SchemaType.JSON)
+    .schema(jsonSchema.getBytes())
+    .build();
+
+admin.schemas().createSchema(
+    "persistent://my-tenant/my-namespace/my-topic",
+    schemaInfo
+);
+```
+</CodeGroup>
+
+### Response Codes
+
+| Code | Description |
+|------|-------------|
+| 200 | Schema created/updated successfully |
+| 307 | Current broker doesn't serve this topic |
+| 401 | Don't have permission |
+| 403 | Don't have admin permission |
+| 404 | Tenant/namespace/topic doesn't exist |
+| 409 | Incompatible schema |
+| 422 | Invalid schema data |
+
+### Response Example
+
+```json
+{
+  "version": 2
+}
+```
+
+## Delete Schema
+
+Delete all versions of a schema for a topic.
+
+```http
+DELETE /admin/v2/schemas/{tenant}/{namespace}/{topic}/schema
+```
+
+### Query Parameters
+
+<ParamField query="force" type="boolean" default="false">
+  Force delete even if topic has active producers/consumers
+</ParamField>
+
+<ParamField query="authoritative" type="boolean" default="false">
+  Whether this broker is authoritative
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:8080/admin/v2/schemas/my-tenant/my-namespace/my-topic/schema \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+admin.schemas().deleteSchema(
+    "persistent://my-tenant/my-namespace/my-topic"
+);
+
+// Force delete
+admin.schemas().deleteSchema(
+    "persistent://my-tenant/my-namespace/my-topic",
+    true
+);
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+{
+  "version": 3
+}
+```
+
+## Test Schema Compatibility
+
+Test if a new schema is compatible with the existing schema.
+
+```http
+POST /admin/v2/schemas/{tenant}/{namespace}/{topic}/compatibility
+```
+
+### Request Body
+
+<ParamField body="type" type="string" required>
+  Schema type
+</ParamField>
+
+<ParamField body="schema" type="string" required>
+  Schema definition to test
+</ParamField>
+
+<ParamField body="properties" type="object">
+  Schema properties
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/schemas/my-tenant/my-namespace/my-topic/compatibility \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "AVRO",
+    "schema": "{\"type\":\"record\",\"name\":\"User\",\"fields\":[{\"name\":\"id\",\"type\":\"int\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"email\",\"type\":[\"null\",\"string\"],\"default\":null}]}"
+  }'
+```
+
+```java Java
+String newSchema = "{\"type\":\"record\",\"name\":\"User\",\"fields\":[{\"name\":\"id\",\"type\":\"int\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"email\",\"type\":[\"null\",\"string\"],\"default\":null}]}";
+
+SchemaInfo schemaInfo = SchemaInfo.builder()
+    .type(SchemaType.AVRO)
+    .schema(newSchema.getBytes())
+    .build();
+
+CompletableFuture<IsCompatibilityResponse> result = 
+    admin.schemas().testCompatibility(
+        "persistent://my-tenant/my-namespace/my-topic",
+        schemaInfo
+    );
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+{
+  "isCompatibility": true,
+  "schemaCompatibilityStrategy": "FORWARD"
+}
+```
+
+## Get Schema Version
+
+Get the version number for a specific schema definition.
+
+```http
+POST /admin/v2/schemas/{tenant}/{namespace}/{topic}/version
+```
+
+### Request Body
+
+<ParamField body="type" type="string" required>
+  Schema type
+</ParamField>
+
+<ParamField body="schema" type="string" required>
+  Schema definition
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/schemas/my-tenant/my-namespace/my-topic/version \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "AVRO",
+    "schema": "{\"type\":\"record\",\"name\":\"User\",\"fields\":[{\"name\":\"id\",\"type\":\"int\"},{\"name\":\"name\",\"type\":\"string\"}]}"
+  }'
+```
+
+```java Java
+SchemaInfo schemaInfo = SchemaInfo.builder()
+    .type(SchemaType.AVRO)
+    .schema(avroSchema.getBytes())
+    .build();
+
+Long version = admin.schemas().getVersionBySchema(
+    "persistent://my-tenant/my-namespace/my-topic",
+    schemaInfo
+);
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+{
+  "version": 1
+}
+```
+
+## Schema Types
+
+Pulsar supports various schema types:
+
+### Primitive Types
+
+- **STRING**: UTF-8 encoded strings
+- **BYTES**: Raw byte arrays
+- **INT8/INT16/INT32/INT64**: Integer types
+- **FLOAT/DOUBLE**: Floating point numbers
+- **BOOLEAN**: Boolean values
+
+### Complex Types
+
+- **AVRO**: Apache Avro schemas with evolution support
+- **JSON**: JSON Schema definitions
+- **PROTOBUF**: Protocol Buffers schemas
+- **PROTOBUF_NATIVE**: Native Protobuf with descriptor
+
+### Example - String Schema
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/schemas/my-tenant/my-namespace/my-topic/schema \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "STRING",
+    "schema": ""
+  }'
+```
+
+```java Java
+SchemaInfo schemaInfo = SchemaInfo.builder()
+    .type(SchemaType.STRING)
+    .schema("".getBytes())
+    .build();
+
+admin.schemas().createSchema(
+    "persistent://my-tenant/my-namespace/my-topic",
+    schemaInfo
+);
+```
+</CodeGroup>
+
+## Schema Compatibility
+
+Pulsar supports different compatibility strategies:
+
+### Compatibility Strategies
+
+- **ALWAYS_COMPATIBLE**: Any schema change is allowed
+- **ALWAYS_INCOMPATIBLE**: No schema changes allowed
+- **BACKWARD**: New schema can read data written with old schema
+- **FORWARD**: Old schema can read data written with new schema
+- **FULL**: Both backward and forward compatible
+- **BACKWARD_TRANSITIVE**: Backward compatible with all previous versions
+- **FORWARD_TRANSITIVE**: Forward compatible with all previous versions
+- **FULL_TRANSITIVE**: Full compatibility with all previous versions
+
+### Setting Compatibility Strategy
+
+Compatibility is configured at the namespace level:
+
+```bash
+curl -X POST http://localhost:8080/admin/v2/namespaces/my-tenant/my-namespace/schemaCompatibilityStrategy \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '"FULL"'
+```
+
+## Best Practices
+
+### Schema Design
+
+- Use Avro or Protobuf for complex data structures
+- Include default values for optional fields
+- Document schema fields with descriptions
+- Version schemas properly
+
+### Schema Evolution
+
+- Test compatibility before deploying changes
+- Add new fields as optional with defaults
+- Never remove required fields
+- Use appropriate compatibility strategy for your use case
+
+### Schema Management
+
+- Store schema definitions in version control
+- Use schema registry for centralized management
+- Implement schema validation in CI/CD pipelines
+- Monitor schema usage and versions
+
+### Performance
+
+- Cache schema information on clients
+- Use schema versioning to avoid repeated uploads
+- Choose appropriate schema types for your data
+- Consider schema size impact on serialization
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="409 - Incompatible Schema">
+    The new schema is not compatible with existing versions.
+    
+    **Solution**: Modify schema to maintain compatibility or change the compatibility strategy.
+  </Accordion>
+  
+  <Accordion title="422 - Invalid Schema Data">
+    The schema definition is malformed or invalid.
+    
+    **Solution**: Validate your schema definition against the type specification.
+  </Accordion>
+  
+  <Accordion title="404 - Schema Not Found">
+    No schema exists for this topic.
+    
+    **Solution**: Upload a schema first before trying to retrieve it.
+  </Accordion>
+</AccordionGroup>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Topics API" icon="message" href="/admin-api/topics">
+    Manage topics that use schemas
+  </Card>
+  
+  <Card title="Namespaces API" icon="folder" href="/admin-api/namespaces">
+    Configure namespace-level schema policies
+  </Card>
+</CardGroup>

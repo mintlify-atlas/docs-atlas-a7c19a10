@@ -1,0 +1,332 @@
+---
+title: Geo-Replication
+description: Configure cross-cluster replication for disaster recovery and global distribution
+---
+
+Geo-replication in Apache Pulsar enables messages to be replicated across multiple clusters in different geographic regions. This provides disaster recovery, data locality, and global distribution capabilities.
+
+## Overview
+
+Pulsar's geo-replication features:
+
+- **Asynchronous replication** - Messages are replicated asynchronously across clusters
+- **Topic-level and namespace-level** - Configure replication per topic or namespace
+- **Multi-directional** - Support for bidirectional and multi-way replication
+- **Automatic failover** - Clients can automatically switch to other clusters
+- **Selective replication** - Replicate specific topics or namespaces
+
+## Architecture
+
+Geo-replication works by:
+
+1. Producer publishes message to local cluster
+2. Message is stored in local BookKeeper
+3. Replicator processes read messages from local storage
+4. Messages are sent to remote clusters
+5. Remote clusters store messages in their BookKeeper
+6. Consumers in any cluster can read messages
+
+## Configuration
+
+### Cluster Setup
+
+Each cluster must know about other clusters in the replication group.
+
+#### Register Clusters
+
+Register each cluster in the global configuration store:
+
+```bash
+# Register cluster-east
+pulsar-admin clusters create cluster-east \
+  --url http://cluster-east-broker:8080 \
+  --broker-url pulsar://cluster-east-broker:6650
+
+# Register cluster-west
+pulsar-admin clusters create cluster-west \
+  --url http://cluster-west-broker:8080 \
+  --broker-url pulsar://cluster-west-broker:6650
+```
+
+#### List Clusters
+
+```bash
+pulsar-admin clusters list
+```
+
+### Broker Configuration
+
+Configure replication settings in `broker.conf`:
+
+<ParamField path="clusterName" type="string" required>
+  Name of the local cluster. Must match the registered cluster name.
+</ParamField>
+
+<ParamField path="replicationMetricsEnabled" type="boolean" default="true">
+  Enable replication metrics collection.
+</ParamField>
+
+<ParamField path="replicationConnectionsPerBroker" type="integer" default="16">
+  Maximum connections to open for each broker in a remote cluster. More connections improve throughput over high-latency links.
+</ParamField>
+
+<ParamField path="replicationProducerQueueSize" type="integer" default="1000">
+  Replicator producer queue size for outbound messages.
+</ParamField>
+
+<ParamField path="replicationPolicyCheckDurationSeconds" type="integer" default="600">
+  Duration to check replication policy to avoid replicator inconsistency due to missing ZooKeeper watch. Set to `0` to disable.
+</ParamField>
+
+### Enable Replication for Namespace
+
+Enable replication at the namespace level:
+
+```bash
+pulsar-admin namespaces set-clusters tenant/namespace \
+  --clusters cluster-east,cluster-west
+```
+
+This enables bidirectional replication between `cluster-east` and `cluster-west` for all topics in the namespace.
+
+### Enable Replication for Topic
+
+Enable replication for a specific topic:
+
+```bash
+pulsar-admin topics set-replication-clusters \
+  persistent://tenant/namespace/topic \
+  --clusters cluster-east,cluster-west,cluster-central
+```
+
+## Replication Patterns
+
+### Active-Active (Bidirectional)
+
+Messages are replicated in both directions:
+
+```
+cluster-east <----> cluster-west
+```
+
+Configuration:
+```bash
+# On both clusters
+pulsar-admin namespaces set-clusters tenant/namespace \
+  --clusters cluster-east,cluster-west
+```
+
+### Active-Passive (Unidirectional)
+
+Messages flow from primary to backup cluster:
+
+```
+cluster-primary ----> cluster-backup
+```
+
+Configuration:
+```bash
+# Only on primary cluster
+pulsar-admin namespaces set-clusters tenant/namespace \
+  --clusters cluster-primary,cluster-backup
+
+# On backup cluster
+pulsar-admin namespaces set-clusters tenant/namespace \
+  --clusters cluster-backup
+```
+
+### Multi-Region Hub and Spoke
+
+Central cluster replicates to regional clusters:
+
+```
+        cluster-central
+       /       |       \
+cluster-us  cluster-eu  cluster-asia
+```
+
+Configuration:
+```bash
+# On central cluster
+pulsar-admin namespaces set-clusters tenant/namespace \
+  --clusters cluster-central,cluster-us,cluster-eu,cluster-asia
+
+# On regional clusters (unidirectional from central)
+pulsar-admin namespaces set-clusters tenant/namespace \
+  --clusters cluster-us  # or cluster-eu, cluster-asia
+```
+
+### Full Mesh
+
+All clusters replicate to all other clusters:
+
+```
+cluster-a <----> cluster-b
+    ^              ^
+    |              |
+    v              v
+cluster-c <----> cluster-d
+```
+
+Configuration:
+```bash
+# On all clusters
+pulsar-admin namespaces set-clusters tenant/namespace \
+  --clusters cluster-a,cluster-b,cluster-c,cluster-d
+```
+
+## Message Deduplication
+
+Enable deduplication to prevent duplicate messages in replicated topics:
+
+<ParamField path="brokerDeduplicationEnabled" type="boolean" default="false">
+  Enable message deduplication at the broker level.
+</ParamField>
+
+<ParamField path="brokerDeduplicationMaxNumberOfProducers" type="integer" default="10000">
+  Maximum number of producer information persisted for deduplication.
+</ParamField>
+
+```bash
+# Enable at namespace level
+pulsar-admin namespaces set-deduplication tenant/namespace --enable
+
+# Enable at topic level
+pulsar-admin topics set-deduplication persistent://tenant/namespace/topic --enable
+```
+
+## Monitoring Replication
+
+### Replication Stats
+
+Get replication statistics for a topic:
+
+```bash
+pulsar-admin topics stats persistent://tenant/namespace/topic
+```
+
+Key metrics:
+- `replicationBacklog` - Number of messages waiting to be replicated
+- `replicationDelayInSeconds` - Replication lag
+- `inboundConnectedSince` - When replicator connected
+- `outboundConnectedSince` - When replicator connected
+
+### Prometheus Metrics
+
+```
+# Replication backlog
+pulsar_replication_backlog{cluster="cluster-west"}
+
+# Replication rate
+rate(pulsar_replication_rate_in[1m])
+rate(pulsar_replication_rate_out[1m])
+
+# Replication delay
+pulsar_replication_delay_seconds{cluster="cluster-west"}
+```
+
+### Alert on Replication Lag
+
+```yaml
+# Prometheus alert rule
+- alert: HighReplicationLag
+  expr: pulsar_replication_delay_seconds > 300
+  for: 5m
+  annotations:
+    summary: "Replication lag over 5 minutes"
+```
+
+## Client Configuration
+
+### Multi-Cluster Client
+
+Clients can connect to multiple clusters for failover:
+
+```java
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar://cluster-east:6650,cluster-west:6650")
+    .build();
+```
+
+### Automatic Failover
+
+Clients automatically failover to available clusters when one becomes unavailable.
+
+## Selective Replication
+
+### Replicate Specific Topics
+
+Only enable replication for critical topics:
+
+```bash
+# Replicate orders topic
+pulsar-admin topics set-replication-clusters \
+  persistent://tenant/app/orders \
+  --clusters cluster-east,cluster-west
+
+# Don't replicate logs topic (local only)
+pulsar-admin topics set-replication-clusters \
+  persistent://tenant/app/logs \
+  --clusters cluster-east
+```
+
+### Message Properties
+
+Filter replication based on message properties using topic policies and filters.
+
+## Troubleshooting
+
+### Check Replication Status
+
+```bash
+# View topic stats including replication
+pulsar-admin topics stats persistent://tenant/namespace/topic
+
+# Check namespace replication settings
+pulsar-admin namespaces get-clusters tenant/namespace
+```
+
+### Common Issues
+
+#### Replication Not Starting
+
+1. Verify cluster registration:
+   ```bash
+   pulsar-admin clusters get cluster-name
+   ```
+
+2. Check broker connectivity to remote cluster
+
+3. Verify namespace replication configuration:
+   ```bash
+   pulsar-admin namespaces get-clusters tenant/namespace
+   ```
+
+#### High Replication Lag
+
+1. Check network bandwidth between clusters
+2. Increase `replicationConnectionsPerBroker`
+3. Monitor BookKeeper read performance
+4. Check remote cluster capacity
+
+#### Duplicate Messages
+
+1. Enable deduplication:
+   ```bash
+   pulsar-admin namespaces set-deduplication tenant/namespace --enable
+   ```
+
+2. Use idempotent message processing in consumers
+
+## Best Practices
+
+1. **Use separate clusters** - Deploy clusters in different failure domains
+2. **Monitor replication lag** - Set up alerts for high lag
+3. **Plan for network latency** - Configure appropriate timeouts
+4. **Enable deduplication** - Prevent duplicate messages in active-active scenarios
+5. **Test failover** - Regularly test cluster failover procedures
+6. **Capacity planning** - Ensure clusters can handle replicated traffic
+7. **Security** - Use TLS for cross-cluster replication
+8. **Selective replication** - Only replicate data that needs global distribution
+9. **Regional routing** - Use DNS or load balancers for regional client routing
+10. **Backup strategy** - Combine geo-replication with backup and restore procedures

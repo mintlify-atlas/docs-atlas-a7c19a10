@@ -1,0 +1,309 @@
+---
+title: Monitoring
+description: Monitor Apache Pulsar clusters with metrics and observability tools
+---
+
+Apache Pulsar provides comprehensive metrics and monitoring capabilities to help you observe cluster health, performance, and resource utilization.
+
+## Metrics Overview
+
+Pulsar exposes metrics in Prometheus format, making it easy to integrate with popular monitoring and visualization tools.
+
+### Metrics Endpoints
+
+Brokers expose metrics at the following HTTP endpoints:
+
+- `http://broker:8080/metrics/` - All metrics in Prometheus format
+- `http://broker:8080/metrics?cluster=<cluster-name>` - Filtered by cluster
+
+### Metric Types
+
+Pulsar tracks several categories of metrics:
+
+- **Broker metrics** - Resource usage, message rates, connections
+- **Topic metrics** - Per-topic message rates, storage, subscriptions
+- **Namespace metrics** - Aggregated metrics at namespace level
+- **Subscription metrics** - Consumer lag, backlog, acknowledgment rates
+- **Replication metrics** - Cross-cluster replication statistics
+- **Storage metrics** - BookKeeper and tiered storage performance
+
+## Key Metrics to Monitor
+
+### Broker Health Metrics
+
+#### CPU and Memory
+
+```
+# JVM memory usage
+jvm_memory_bytes_used{area="heap"}
+jvm_memory_bytes_max{area="heap"}
+
+# Direct memory (critical for message buffering)
+jvm_memory_direct_bytes_used
+jvm_memory_direct_bytes_max
+```
+
+#### Connection Metrics
+
+```
+# Active connections
+pulsar_active_connections
+
+# Connection rate
+rate(pulsar_connection_created_total_count[5m])
+rate(pulsar_connection_closed_total_count[5m])
+```
+
+### Message Rate Metrics
+
+#### Publish Rates
+
+```
+# Messages published per second
+rate(pulsar_in_messages_total[1m])
+
+# Bytes published per second
+rate(pulsar_in_bytes_total[1m])
+```
+
+#### Consumption Rates
+
+```
+# Messages dispatched to consumers
+rate(pulsar_out_messages_total[1m])
+
+# Bytes dispatched to consumers
+rate(pulsar_out_bytes_total[1m])
+```
+
+### Storage Metrics
+
+#### BookKeeper Performance
+
+```
+# BookKeeper write latency
+pulsar_managedLedger_addEntry_latency_bucket
+
+# BookKeeper read latency
+pulsar_managedLedger_readEntries_latency_bucket
+
+# Ledger operations
+rate(pulsar_managedLedger_addEntry_count[5m])
+```
+
+#### Storage Size
+
+```
+# Total storage size per topic
+pulsar_storage_size
+
+# Backlog size (unacknowledged messages)
+pulsar_storage_backlog_size
+```
+
+### Subscription Metrics
+
+#### Consumer Lag
+
+```
+# Number of messages in backlog
+pulsar_subscription_back_log
+
+# Age of oldest unacknowledged message
+pulsar_subscription_back_log_no_delayed
+```
+
+#### Message Acknowledgment
+
+```
+# Unacknowledged messages
+pulsar_subscription_unacked_messages
+
+# Acknowledgment rate
+rate(pulsar_subscription_msg_ack_count[1m])
+```
+
+### Replication Metrics
+
+```
+# Replication backlog
+pulsar_replication_backlog
+
+# Replication rate
+rate(pulsar_replication_rate_in[1m])
+rate(pulsar_replication_rate_out[1m])
+
+# Replication delay
+pulsar_replication_delay_seconds
+```
+
+## Monitoring Tools Integration
+
+### Prometheus
+
+Configure Prometheus to scrape Pulsar metrics:
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: 'pulsar-broker'
+    static_configs:
+      - targets:
+        - 'broker-1:8080'
+        - 'broker-2:8080'
+        - 'broker-3:8080'
+    metrics_path: '/metrics/'
+    scrape_interval: 15s
+```
+
+### Grafana Dashboards
+
+Pulsar provides pre-built Grafana dashboards for visualization:
+
+1. **Cluster Overview** - High-level cluster health and performance
+2. **Broker Metrics** - Detailed broker-level statistics
+3. **Topic Metrics** - Per-topic message rates and storage
+4. **Namespace Metrics** - Namespace-level aggregations
+
+Import dashboards from the Pulsar GitHub repository or create custom dashboards using the metrics above.
+
+## Health Checks
+
+### Broker Health Endpoint
+
+Check if a broker is healthy:
+
+```bash
+curl http://broker:8080/admin/v2/brokers/health
+```
+
+Returns `ok` if the broker is healthy.
+
+### Topic Stats
+
+Get detailed statistics for a topic:
+
+```bash
+pulsar-admin topics stats persistent://tenant/namespace/topic
+```
+
+Returns JSON with:
+- Message rates (in/out)
+- Storage size
+- Subscription details
+- Publisher and consumer information
+
+### Subscription Stats
+
+Monitor subscription lag and backlog:
+
+```bash
+pulsar-admin topics stats-internal persistent://tenant/namespace/topic
+```
+
+## Alerting Guidelines
+
+### Critical Alerts
+
+Set up alerts for these conditions:
+
+#### Broker Down
+```
+up{job="pulsar-broker"} == 0
+```
+
+#### High Memory Usage
+```
+(jvm_memory_bytes_used{area="heap"} / jvm_memory_bytes_max{area="heap"}) > 0.85
+```
+
+#### Message Backlog Growing
+```
+rate(pulsar_subscription_back_log[5m]) > 0
+```
+
+#### Replication Lag High
+```
+pulsar_replication_delay_seconds > 60
+```
+
+### Warning Alerts
+
+#### High CPU Usage
+```
+rate(process_cpu_seconds_total[5m]) > 0.8
+```
+
+#### Slow Storage Operations
+```
+histogram_quantile(0.99, pulsar_managedLedger_addEntry_latency_bucket) > 100
+```
+
+#### Connection Limit Approaching
+```
+pulsar_active_connections / 10000 > 0.8
+```
+
+## Log Monitoring
+
+### Log Locations
+
+Pulsar logs are stored in:
+
+- `logs/pulsar-broker-*.log` - Broker application logs
+- `logs/pulsar-gc.log` - Garbage collection logs
+
+### Important Log Patterns
+
+Monitor logs for these patterns:
+
+- `OutOfMemoryError` - Memory exhaustion
+- `Failed to acquire` - Resource acquisition failures
+- `Timeout` - Operation timeouts
+- `Connection refused` - Connectivity issues
+- `Metadata store operation failed` - ZooKeeper/metadata issues
+
+## Performance Benchmarking
+
+Use the built-in performance testing tool:
+
+```bash
+# Producer throughput test
+bin/pulsar-perf produce persistent://public/default/test \
+  --rate 10000 \
+  --num-messages 100000 \
+  --size 1024
+
+# Consumer throughput test
+bin/pulsar-perf consume persistent://public/default/test \
+  --subscription-type Shared \
+  --num-subscriptions 1
+```
+
+## Monitoring Configuration
+
+### Enable Metrics Collection
+
+Metrics are enabled by default. Configure collection intervals:
+
+<ParamField path="brokerServiceCompactionMonitorIntervalInSeconds" type="integer" default="60">
+  Interval for checking compaction status.
+</ParamField>
+
+<ParamField path="loadBalancerReportUpdateMinIntervalMillis" type="integer" default="5000">
+  Minimum interval to update load reports.
+</ParamField>
+
+<ParamField path="managedLedgerPrometheusStatsLatencyRolloverSeconds" type="integer" default="60">
+  Managed ledger Prometheus stats latency rollover interval.
+</ParamField>
+
+## Best Practices
+
+1. **Set up comprehensive monitoring** - Monitor all layers: brokers, BookKeeper, ZooKeeper
+2. **Configure alerting** - Set up alerts for critical conditions before issues occur
+3. **Track trends** - Monitor long-term trends in message rates, storage, and latency
+4. **Capacity planning** - Use metrics to plan cluster expansion
+5. **Custom metrics** - Add application-specific metrics for end-to-end monitoring
+6. **Dashboard visibility** - Create role-specific dashboards for operators and developers
+7. **Regular reviews** - Periodically review and tune alert thresholds

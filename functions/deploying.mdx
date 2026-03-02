@@ -1,0 +1,532 @@
+---
+title: Deploying Pulsar Functions
+description: Deploy, configure, and manage Pulsar Functions in production
+---
+
+This guide covers deploying Pulsar Functions to a Pulsar cluster, from basic deployment to advanced configuration and management.
+
+## Deployment Methods
+
+Pulsar Functions can be deployed using:
+
+- **pulsar-admin CLI**: Command-line deployment and management
+- **REST API**: Programmatic deployment via HTTP
+- **Function configuration files**: YAML-based configuration
+
+## Deploying with pulsar-admin
+
+The `pulsar-admin functions` command provides complete function lifecycle management.
+
+### Basic Deployment
+
+<Steps>
+  <Step title="Package Your Function">
+    Package your function code as a JAR (Java), Python file, or Go binary.
+    
+    ```bash Java
+    mvn clean package
+    ```
+    
+    ```bash Python
+    # Python functions can be deployed as .py files or .zip packages
+    zip my-function.zip my_function.py requirements.txt
+    ```
+  </Step>
+  
+  <Step title="Create the Function">
+    Deploy your function using `pulsar-admin functions create`:
+    
+    ```bash
+    bin/pulsar-admin functions create \
+        --tenant public \
+        --namespace default \
+        --name exclamation-function \
+        --jar my-function.jar \
+        --classname org.apache.pulsar.functions.api.examples.ExclamationFunction \
+        --inputs persistent://public/default/input-topic \
+        --output persistent://public/default/output-topic
+    ```
+  </Step>
+  
+  <Step title="Verify Deployment">
+    Check function status:
+    
+    ```bash
+    bin/pulsar-admin functions status \
+        --tenant public \
+        --namespace default \
+        --name exclamation-function
+    ```
+  </Step>
+</Steps>
+
+### Language-Specific Deployment
+
+<CodeGroup>
+```bash Java
+bin/pulsar-admin functions create \
+    --jar my-function.jar \
+    --classname com.example.MyFunction \
+    --tenant public \
+    --namespace default \
+    --name my-java-function \
+    --inputs persistent://public/default/input-topic \
+    --output persistent://public/default/output-topic
+```
+
+```bash Python
+bin/pulsar-admin functions create \
+    --py my-function.py \
+    --classname my_function.MyFunction \
+    --tenant public \
+    --namespace default \
+    --name my-python-function \
+    --inputs persistent://public/default/input-topic \
+    --output persistent://public/default/output-topic
+```
+
+```bash Go
+bin/pulsar-admin functions create \
+    --go my-function \
+    --tenant public \
+    --namespace default \
+    --name my-go-function \
+    --inputs persistent://public/default/input-topic \
+    --output persistent://public/default/output-topic
+```
+</CodeGroup>
+
+## Configuration File Deployment
+
+Use YAML configuration files for complex deployments:
+
+### Basic Configuration
+
+```yaml example-function-config.yaml
+tenant: "public"
+namespace: "default"
+name: "exclamation"
+className: "org.apache.pulsar.functions.api.examples.ExclamationFunction"
+inputs: ["persistent://public/default/input-topic"]
+output: "persistent://public/default/output-topic"
+autoAck: true
+parallelism: 1
+```
+
+Deploy using the configuration file:
+
+```bash
+bin/pulsar-admin functions create \
+    --function-config-file example-function-config.yaml \
+    --jar my-function.jar
+```
+
+### Stateful Function Configuration
+
+```yaml stateful-function-config.yaml
+tenant: "public"
+namespace: "default"
+name: "word-count"
+className: "org.apache.pulsar.functions.api.examples.WordCountFunction"
+inputs: ["persistent://public/default/sentences"]
+output: "persistent://public/default/word-counts"
+autoAck: true
+parallelism: 3
+# Enable state storage
+statefulConfig:
+  pulsar:
+    stateStorageServiceUrl: "bk://localhost:4181"
+```
+
+### Window Function Configuration
+
+```yaml window-function-config.yaml
+tenant: "public"
+namespace: "default"
+name: "window-sum"
+className: "org.apache.pulsar.functions.api.examples.AddWindowFunction"
+inputs: ["persistent://public/default/numbers"]
+output: "persistent://public/default/sums"
+autoAck: true
+parallelism: 1
+
+# Window configuration
+windowConfig:
+  # Process every 10 messages
+  windowLengthCount: 10
+  # Slide window every 5 messages (50% overlap)
+  slidingIntervalCount: 5
+  
+  # Alternatively, use time-based windows
+  # windowLengthDurationMs: 60000  # 1 minute
+  # slidingIntervalDurationMs: 30000  # 30 seconds
+```
+
+## Advanced Configuration
+
+### Multiple Input Topics
+
+Process messages from multiple topics:
+
+```bash
+bin/pulsar-admin functions create \
+    --name multi-input-function \
+    --jar my-function.jar \
+    --classname com.example.MultiInputFunction \
+    --inputs "persistent://public/default/topic1,persistent://public/default/topic2" \
+    --output persistent://public/default/output
+```
+
+### Topic Pattern Subscriptions
+
+Subscribe to topics matching a pattern:
+
+```bash
+bin/pulsar-admin functions create \
+    --name pattern-function \
+    --jar my-function.jar \
+    --classname com.example.PatternFunction \
+    --topics-pattern "persistent://public/default/sensor-.*" \
+    --output persistent://public/default/processed
+```
+
+### User Configuration
+
+Pass custom configuration to your function:
+
+```bash
+bin/pulsar-admin functions create \
+    --name config-function \
+    --jar my-function.jar \
+    --classname com.example.ConfigFunction \
+    --inputs persistent://public/default/input \
+    --user-config '{"threshold":100,"prefix":"processed"}'
+```
+
+Access in your function:
+
+```java
+String prefix = (String) context.getUserConfigValueOrDefault("prefix", "default");
+Integer threshold = (Integer) context.getUserConfigValue("threshold").orElse(50);
+```
+
+### Resource Allocation
+
+Configure CPU and memory resources:
+
+```bash
+bin/pulsar-admin functions create \
+    --name resource-function \
+    --jar my-function.jar \
+    --classname com.example.MyFunction \
+    --inputs persistent://public/default/input \
+    --cpu 0.5 \
+    --ram 512000000 \
+    --disk 1024000000
+```
+
+### Parallelism and Scaling
+
+Run multiple instances for higher throughput:
+
+```bash
+bin/pulsar-admin functions create \
+    --name parallel-function \
+    --jar my-function.jar \
+    --classname com.example.ParallelFunction \
+    --inputs persistent://public/default/input \
+    --output persistent://public/default/output \
+    --parallelism 5
+```
+
+Each instance processes a subset of input partitions.
+
+### Processing Guarantees
+
+Configure delivery semantics:
+
+```bash
+bin/pulsar-admin functions create \
+    --name guaranteed-function \
+    --jar my-function.jar \
+    --classname com.example.GuaranteedFunction \
+    --inputs persistent://public/default/input \
+    --output persistent://public/default/output \
+    --processing-guarantees EFFECTIVELY_ONCE
+```
+
+Options:
+- `ATLEAST_ONCE` (default): Messages processed at least once
+- `ATMOST_ONCE`: Messages processed at most once
+- `EFFECTIVELY_ONCE`: Message effects applied exactly once
+
+### Log Configuration
+
+Redirect logs to a Pulsar topic:
+
+```bash
+bin/pulsar-admin functions create \
+    --name logging-function \
+    --jar my-function.jar \
+    --classname com.example.LoggingFunction \
+    --inputs persistent://public/default/input \
+    --log-topic persistent://public/default/function-logs
+```
+
+### Secrets Management
+
+Provide secrets to functions:
+
+```bash
+bin/pulsar-admin functions create \
+    --name secure-function \
+    --jar my-function.jar \
+    --classname com.example.SecureFunction \
+    --inputs persistent://public/default/input \
+    --secrets '{"api-key":"secret-path/api-key"}'
+```
+
+Access in your function:
+
+```java
+String apiKey = context.getSecret("api-key");
+```
+
+## Function Management
+
+### Update Function
+
+Update a running function:
+
+```bash
+bin/pulsar-admin functions update \
+    --tenant public \
+    --namespace default \
+    --name my-function \
+    --jar my-function-v2.jar
+```
+
+Updates are performed with zero downtime.
+
+### Get Function Info
+
+Retrieve function configuration:
+
+```bash
+bin/pulsar-admin functions get \
+    --tenant public \
+    --namespace default \
+    --name my-function
+```
+
+### Check Function Status
+
+View runtime status of all instances:
+
+```bash
+bin/pulsar-admin functions status \
+    --tenant public \
+    --namespace default \
+    --name my-function
+```
+
+Output shows:
+- Number of running instances
+- Processed message count
+- Failure count
+- Average processing latency
+
+### View Function Stats
+
+Get detailed processing statistics:
+
+```bash
+bin/pulsar-admin functions stats \
+    --tenant public \
+    --namespace default \
+    --name my-function
+```
+
+### Restart Function
+
+Restart all or specific function instances:
+
+```bash
+# Restart all instances
+bin/pulsar-admin functions restart \
+    --tenant public \
+    --namespace default \
+    --name my-function
+
+# Restart specific instance
+bin/pulsar-admin functions restart \
+    --tenant public \
+    --namespace default \
+    --name my-function \
+    --instance-id 0
+```
+
+### Stop Function
+
+Stop function without deleting:
+
+```bash
+bin/pulsar-admin functions stop \
+    --tenant public \
+    --namespace default \
+    --name my-function
+```
+
+### Start Function
+
+Start a stopped function:
+
+```bash
+bin/pulsar-admin functions start \
+    --tenant public \
+    --namespace default \
+    --name my-function
+```
+
+### Delete Function
+
+Remove function from cluster:
+
+```bash
+bin/pulsar-admin functions delete \
+    --tenant public \
+    --namespace default \
+    --name my-function
+```
+
+## Testing in Production
+
+### Trigger Function Manually
+
+Test function with sample input:
+
+```bash
+bin/pulsar-admin functions trigger \
+    --tenant public \
+    --namespace default \
+    --name my-function \
+    --trigger-value "test message"
+```
+
+### View Function Logs
+
+Stream function logs:
+
+```bash
+# Get logs from all instances
+bin/pulsar-admin functions logs \
+    --tenant public \
+    --namespace default \
+    --name my-function
+
+# Follow logs in real-time
+bin/pulsar-admin functions logs \
+    --tenant public \
+    --namespace default \
+    --name my-function \
+    --follow
+```
+
+## Monitoring and Metrics
+
+### Built-in Metrics
+
+Pulsar Functions automatically export metrics:
+
+- **pulsar_function_processed_successfully_total**: Total successful messages
+- **pulsar_function_system_exceptions_total**: System errors
+- **pulsar_function_user_exceptions_total**: User code errors
+- **pulsar_function_process_latency_ms**: Processing latency
+- **pulsar_function_last_invocation**: Timestamp of last invocation
+
+### Custom Metrics
+
+View custom metrics recorded via `context.recordMetric()`:
+
+```bash
+bin/pulsar-admin functions stats \
+    --tenant public \
+    --namespace default \
+    --name my-function
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Use Configuration Files">
+    Store function configuration in version control for reproducible deployments and easy rollback.
+  </Step>
+  
+  <Step title="Start with Low Parallelism">
+    Begin with parallelism=1 and increase based on monitoring. Ensure your function is thread-safe before increasing parallelism.
+  </Step>
+  
+  <Step title="Configure Appropriate Resources">
+    Set CPU and memory based on function requirements. Monitor resource usage and adjust as needed.
+  </Step>
+  
+  <Step title="Enable Appropriate Processing Guarantees">
+    Use EFFECTIVELY_ONCE only when needed, as it has performance overhead. ATLEAST_ONCE is sufficient for idempotent operations.
+  </Step>
+  
+  <Step title="Monitor Function Health">
+    Set up alerts on function exceptions, processing latency, and custom metrics.
+  </Step>
+  
+  <Step title="Test Thoroughly Before Production">
+    Use localrun mode and test with production-like data volumes before deploying.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Function Won't Start
+
+Check function status and logs:
+
+```bash
+bin/pulsar-admin functions status --name my-function
+bin/pulsar-admin functions logs --name my-function
+```
+
+Common issues:
+- Invalid class name or missing dependencies
+- Insufficient resources
+- Topic subscription failures
+
+### High Exception Rate
+
+View detailed stats:
+
+```bash
+bin/pulsar-admin functions stats --name my-function
+```
+
+Check:
+- User code exceptions in logs
+- Input message format mismatches
+- External service availability
+
+### Performance Issues
+
+Monitor processing latency and throughput:
+
+- Increase parallelism for CPU-bound functions
+- Use async operations for I/O-bound functions
+- Check for bottlenecks in state storage
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Runtime Configuration" icon="gears" href="/functions/runtime">
+    Learn about function runtime modes and configuration
+  </Card>
+  <Card title="Developing Functions" icon="code" href="/functions/developing">
+    Review function development best practices
+  </Card>
+</CardGroup>

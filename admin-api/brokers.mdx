@@ -1,0 +1,516 @@
+---
+title: "Brokers API"
+description: "REST API endpoints for monitoring and managing Pulsar broker nodes"
+---
+
+## Overview
+
+Brokers are the servers that handle message routing and storage in Pulsar. The Brokers API provides endpoints to monitor broker health, manage configurations, and view broker-level statistics.
+
+**Base Path**: `/admin/v2/brokers`
+
+## List Active Brokers
+
+Get the list of all active broker IDs in a cluster.
+
+```http
+GET /admin/v2/brokers/{cluster}
+```
+
+### Path Parameters
+
+<ParamField path="cluster" type="string" required>
+  The cluster name
+</ParamField>
+
+### Response
+
+<ResponseField name="brokers" type="array">
+  Set of active broker IDs
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/brokers/us-west \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+List<String> brokers = admin.brokers().getActiveBrokers("us-west");
+```
+
+```python Python
+brokers = admin.brokers().get_active_brokers("us-west")
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+[
+  "broker-1.us-west.example.com:8080",
+  "broker-2.us-west.example.com:8080",
+  "broker-3.us-west.example.com:8080"
+]
+```
+
+## List Active Brokers (Local Cluster)
+
+Get active brokers in the local cluster without specifying cluster name.
+
+```http
+GET /admin/v2/brokers
+```
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/brokers \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+List<String> brokers = admin.brokers().getActiveBrokers();
+```
+</CodeGroup>
+
+## Get Leader Broker
+
+Retrieve information about the current leader broker.
+
+```http
+GET /admin/v2/brokers/leaderBroker
+```
+
+### Response
+
+<ResponseField name="serviceUrl" type="string">
+  HTTP service URL of the leader broker
+</ResponseField>
+
+<ResponseField name="brokerId" type="string">
+  The broker ID of the leader
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/brokers/leaderBroker \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+BrokerInfo leader = admin.brokers().getLeaderBroker();
+```
+
+```python Python
+leader = admin.brokers().get_leader_broker()
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+{
+  "serviceUrl": "http://broker-1.us-west.example.com:8080",
+  "brokerId": "broker-1.us-west.example.com:8080"
+}
+```
+
+## Get Owned Namespaces
+
+Get the list of namespaces owned by a specific broker.
+
+```http
+GET /admin/v2/brokers/{clusterName}/{brokerId}/ownedNamespaces
+```
+
+### Path Parameters
+
+<ParamField path="clusterName" type="string" required>
+  The cluster name
+</ParamField>
+
+<ParamField path="brokerId" type="string" required>
+  The broker ID (e.g., broker-1.example.com:8080)
+</ParamField>
+
+### Response
+
+<ResponseField name="namespaces" type="object">
+  Map of namespace names to ownership status
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/brokers/us-west/broker-1.example.com:8080/ownedNamespaces \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+Map<String, NamespaceOwnershipStatus> namespaces = 
+    admin.brokers().getOwnedNamespaces("us-west", "broker-1.example.com:8080");
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+{
+  "my-tenant/ns1": {
+    "broker_assignment": "shared",
+    "is_controlled": false,
+    "is_active": true
+  },
+  "my-tenant/ns2": {
+    "broker_assignment": "primary",
+    "is_controlled": true,
+    "is_active": true
+  }
+}
+```
+
+## Dynamic Configuration
+
+### Update Dynamic Configuration
+
+Update a dynamic service configuration parameter.
+
+```http
+POST /admin/v2/brokers/configuration/{configName}/{configValue}
+```
+
+#### Path Parameters
+
+<ParamField path="configName" type="string" required>
+  The configuration parameter name
+</ParamField>
+
+<ParamField path="configValue" type="string" required>
+  The new value for the parameter
+</ParamField>
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/brokers/configuration/maxConcurrentLookupRequest/50000 \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+admin.brokers().updateDynamicConfiguration(
+    "maxConcurrentLookupRequest",
+    "50000"
+);
+```
+</CodeGroup>
+
+#### Response Codes
+
+| Code | Description |
+|------|-------------|
+| 204 | Configuration updated successfully |
+| 403 | Don't have super-user privileges |
+| 404 | Configuration not found |
+| 412 | Invalid configuration value |
+
+<Info>
+  Only dynamic configurations can be updated at runtime. Static configurations require a broker restart.
+</Info>
+
+### Get All Dynamic Configurations
+
+Retrieve all runtime configurations.
+
+```http
+GET /admin/v2/brokers/configuration/runtime
+```
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/brokers/configuration/runtime \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+Map<String, String> configs = admin.brokers().getRuntimeConfigurations();
+```
+</CodeGroup>
+
+### Get Dynamic Configuration Names
+
+Get the list of all dynamic configuration parameter names.
+
+```http
+GET /admin/v2/brokers/configuration
+```
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/brokers/configuration \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+List<String> configNames = admin.brokers().getDynamicConfigurationNames();
+```
+</CodeGroup>
+
+### Delete Dynamic Configuration
+
+Reset a dynamic configuration to its default value.
+
+```http
+DELETE /admin/v2/brokers/configuration/{configName}
+```
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:8080/admin/v2/brokers/configuration/maxConcurrentLookupRequest \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+admin.brokers().deleteDynamicConfiguration("maxConcurrentLookupRequest");
+```
+</CodeGroup>
+
+## Internal Configuration
+
+### Get Internal Configuration
+
+Retrieve internal configuration data for the broker.
+
+```http
+GET /admin/v2/brokers/internal-configuration
+```
+
+#### Response
+
+<ResponseField name="zookeeperServers" type="string">
+  ZooKeeper connection string
+</ResponseField>
+
+<ResponseField name="configurationStoreServers" type="string">
+  Configuration store connection string
+</ResponseField>
+
+<ResponseField name="ledgersRootPath" type="string">
+  BookKeeper ledgers root path
+</ResponseField>
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/brokers/internal-configuration \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+InternalConfigurationData config = admin.brokers().getInternalConfigurationData();
+```
+</CodeGroup>
+
+## Health Check
+
+### Health Check
+
+Check broker health status.
+
+```http
+GET /admin/v2/brokers/health
+```
+
+#### Response Codes
+
+| Code | Description |
+|------|-------------|
+| 200 | Broker is healthy |
+| 307 | Temporary redirect to another broker |
+| 500 | Broker is unhealthy |
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/brokers/health
+```
+
+```java Java
+try {
+    admin.brokers().healthcheck();
+    System.out.println("Broker is healthy");
+} catch (PulsarAdminException e) {
+    System.err.println("Broker is unhealthy: " + e.getMessage());
+}
+```
+</CodeGroup>
+
+## Version
+
+### Get Pulsar Version
+
+Get the Pulsar version running on the broker.
+
+```http
+GET /admin/v2/brokers/version
+```
+
+#### Response
+
+<ResponseField name="version" type="string">
+  Pulsar version string
+</ResponseField>
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/brokers/version \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+String version = admin.brokers().getVersion();
+```
+</CodeGroup>
+
+#### Response Example
+
+```json
+"3.2.0"
+```
+
+## Common Dynamic Configurations
+
+Here are some commonly used dynamic configuration parameters:
+
+### Performance Tuning
+
+- **maxConcurrentLookupRequest**: Maximum concurrent topic lookup requests
+- **maxConcurrentTopicLoadRequest**: Maximum concurrent topic load requests
+- **maxMessageSize**: Maximum message size in bytes
+- **maxPublishRatePerTopicInMessages**: Max publish rate per topic
+- **maxPublishRatePerTopicInBytes**: Max publish rate per topic in bytes
+
+### Resource Limits
+
+- **maxUnackedMessagesPerConsumer**: Max unacked messages per consumer
+- **maxUnackedMessagesPerSubscription**: Max unacked messages per subscription
+- **maxSubscriptionsPerTopic**: Max subscriptions per topic
+- **maxProducersPerTopic**: Max producers per topic
+- **maxConsumersPerTopic**: Max consumers per topic
+
+### Backlog Management
+
+- **backlogQuotaDefaultLimitGB**: Default backlog quota in GB
+- **backlogQuotaDefaultRetentionPolicy**: Default retention policy (producer_request_hold, producer_exception, consumer_backlog_eviction)
+- **backlogQuotaCheckIntervalInSeconds**: How often to check backlog quotas
+
+### Example - Update Multiple Configurations
+
+<CodeGroup>
+```bash cURL
+# Increase concurrent lookup limit
+curl -X POST http://localhost:8080/admin/v2/brokers/configuration/maxConcurrentLookupRequest/100000 \
+  -H "Authorization: Bearer <token>"
+
+# Set max message size to 5MB
+curl -X POST http://localhost:8080/admin/v2/brokers/configuration/maxMessageSize/5242880 \
+  -H "Authorization: Bearer <token>"
+
+# Set max producers per topic
+curl -X POST http://localhost:8080/admin/v2/brokers/configuration/maxProducersPerTopic/10 \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+admin.brokers().updateDynamicConfiguration("maxConcurrentLookupRequest", "100000");
+admin.brokers().updateDynamicConfiguration("maxMessageSize", "5242880");
+admin.brokers().updateDynamicConfiguration("maxProducersPerTopic", "10");
+```
+</CodeGroup>
+
+## Best Practices
+
+### Monitoring
+
+- Regularly check broker health endpoints
+- Monitor owned namespaces for balanced distribution
+- Track dynamic configuration changes
+- Set up alerts for broker failures
+
+### Configuration Management
+
+- Test configuration changes in staging first
+- Document all dynamic configuration updates
+- Use version control for configuration changes
+- Monitor impact of configuration changes
+
+### Performance
+
+- Tune concurrent request limits based on load
+- Adjust resource limits to prevent overload
+- Configure appropriate backlog policies
+- Monitor and adjust based on metrics
+
+### High Availability
+
+- Ensure multiple brokers per cluster
+- Monitor leader broker status
+- Test failover procedures
+- Balance namespace ownership across brokers
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="403 - Permission Denied">
+    You don't have super-user privileges.
+    
+    **Solution**: Ensure you're authenticated with proper credentials.
+  </Accordion>
+  
+  <Accordion title="404 - Configuration Not Found">
+    The specified configuration parameter doesn't exist.
+    
+    **Solution**: Check the list of available dynamic configurations.
+  </Accordion>
+  
+  <Accordion title="412 - Invalid Configuration Value">
+    The provided value is not valid for the configuration parameter.
+    
+    **Solution**: Check the parameter's type and valid range.
+  </Accordion>
+  
+  <Accordion title="500 - Broker Unhealthy">
+    The broker failed its health check.
+    
+    **Solution**: Check broker logs and system resources.
+  </Accordion>
+</AccordionGroup>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Clusters API" icon="server" href="/admin-api/clusters">
+    Manage cluster configurations
+  </Card>
+  
+  <Card title="Namespaces API" icon="folder" href="/admin-api/namespaces">
+    View namespace ownership and policies
+  </Card>
+</CardGroup>

@@ -1,0 +1,136 @@
+---
+title: Introduction to Apache Pulsar
+description: Learn about Apache Pulsar, a distributed pub-sub messaging platform with flexible messaging models and intuitive client APIs.
+---
+
+Apache Pulsar is a distributed pub-sub messaging platform with a very flexible messaging model and an intuitive client API. Pulsar enables you to build scalable, reliable messaging systems for real-time data streaming and event-driven architectures.
+
+## What is Apache Pulsar?
+
+Pulsar is a cloud-native, distributed messaging and streaming platform originally created at Yahoo and now part of the Apache Software Foundation. It combines the best features of traditional messaging systems with modern distributed systems design.
+
+<CardGroup cols={2}>
+  <Card title="Horizontally scalable" icon="chart-line">
+    Handle millions of independent topics and millions of messages published per second with linear scalability.
+  </Card>
+  
+  <Card title="Strong ordering guarantees" icon="list-ol">
+    Maintain strict message ordering and consistency guarantees across your distributed applications.
+  </Card>
+  
+  <Card title="Low latency durable storage" icon="database">
+    Store messages durably with low latency using Apache BookKeeper's architecture.
+  </Card>
+  
+  <Card title="Multi-tenancy" icon="users">
+    Support multiple teams and applications with built-in multi-tenancy, authentication, and authorization.
+  </Card>
+  
+  <Card title="Geo-replication" icon="globe">
+    Replicate data across multiple data centers and cloud regions automatically.
+  </Card>
+  
+  <Card title="Flexible messaging" icon="arrows-split-up-and-left">
+    Use both topic and queue semantics with multiple subscription types for different use cases.
+  </Card>
+</CardGroup>
+
+## Key features
+
+### Enterprise-ready messaging
+
+Pulsar is designed for being deployed as a hosted service with features that enterprise applications need:
+
+- **Multi-tenant architecture**: Isolate workloads with tenants and namespaces
+- **Authentication and authorization**: Secure your data with pluggable auth providers
+- **Quotas and rate limiting**: Control resource usage per tenant
+- **Mixed workloads**: Support very different workloads on the same cluster
+- **Optional hardware isolation**: Dedicate resources when needed
+
+### Developer-friendly APIs
+
+Pulsar provides intuitive client APIs for multiple languages:
+
+- Java, Python, Go, C++, Node.js, C#/.NET
+- WebSocket API for browser-based applications
+- REST API for provisioning, admin, and stats
+
+### Flexible consumption models
+
+<Info>
+Pulsar keeps track of consumer cursor position, allowing you to replay messages or skip ahead as needed.
+</Info>
+
+Pulsar supports multiple subscription types:
+
+- **Exclusive**: Only one consumer can subscribe to a topic
+- **Shared**: Multiple consumers share a subscription, messages are distributed round-robin
+- **Failover**: Multiple consumers can subscribe, but only one receives messages at a time
+- **Key_Shared**: Messages with the same key are always delivered to the same consumer
+
+### Performance optimizations
+
+Pulsar includes built-in optimizations for high throughput and low latency:
+
+- Transparent handling of partitioned topics
+- Transparent batching of messages
+- Efficient binary protocol
+- Zero-copy message handling
+
+## Architecture overview
+
+Pulsar's architecture separates compute from storage:
+
+<Steps>
+  <Step title="Pulsar brokers">
+    Stateless compute layer that handles message routing and delivery. Brokers can be added or removed without data migration.
+  </Step>
+  
+  <Step title="Apache BookKeeper">
+    Distributed log storage system that provides low-latency durable storage for messages.
+  </Step>
+  
+  <Step title="Apache ZooKeeper">
+    Coordination service for metadata, configuration, and cluster management.
+  </Step>
+</Steps>
+
+This separation enables independent scaling of compute and storage resources, making Pulsar highly efficient and cost-effective.
+
+## Use cases
+
+Pulsar is ideal for:
+
+- **Event streaming**: Real-time data pipelines and event-driven microservices
+- **Message queuing**: Reliable work queue distribution across workers
+- **Log aggregation**: Centralized logging from distributed applications
+- **IoT data ingestion**: High-volume sensor data collection and processing
+- **Financial services**: Trading platforms, payment processing, and transaction logs
+- **E-commerce**: Order processing, inventory updates, and recommendation systems
+
+## Getting started
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running with Pulsar in minutes
+  </Card>
+  
+  <Card title="Installation" icon="download" href="/installation">
+    Install Pulsar for production use
+  </Card>
+</CardGroup>
+
+<Tip>
+New to messaging systems? Start with our [quickstart guide](/quickstart) to see Pulsar in action with a simple pub-sub example.
+</Tip>
+
+## Community and support
+
+Apache Pulsar is an open-source project with a vibrant community:
+
+- **GitHub**: [apache/pulsar](https://github.com/apache/pulsar)
+- **Slack**: Join the Apache Pulsar Slack workspace
+- **Mailing lists**: users@pulsar.apache.org for user discussions
+- **Website**: [https://pulsar.apache.org](https://pulsar.apache.org)
+
+Learn more about Pulsar at the official documentation site.

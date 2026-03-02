@@ -1,0 +1,629 @@
+---
+title: pulsar
+description: Main Pulsar CLI for running brokers, bookies, and other cluster components.
+---
+
+The `pulsar` command is the main entry point for running Apache Pulsar server components and utilities.
+
+## Usage
+
+```bash
+pulsar <command> [options]
+```
+
+## Available Commands
+
+### Server Components
+
+#### broker
+
+Run a Pulsar broker server.
+
+```bash
+pulsar broker
+```
+
+The broker handles all message routing, topic management, and serves client requests.
+
+**Configuration:** `conf/broker.conf`
+
+**Environment Variables:**
+- `PULSAR_BROKER_CONF` - Path to broker configuration file
+- `PULSAR_LOG_CONF` - Path to log4j2 configuration
+- `PULSAR_EXTRA_OPTS` - Additional JVM options
+- `PULSAR_MEM` - JVM memory settings
+
+#### bookie
+
+Run a BookKeeper bookie server.
+
+```bash
+pulsar bookie
+```
+
+Bookies provide persistent storage for Pulsar messages.
+
+**Configuration:** `conf/bookkeeper.conf`
+
+**Environment Variables:**
+- `PULSAR_BOOKKEEPER_CONF` - Path to bookie configuration file
+- `BOOKIE_EXTRA_OPTS` - Additional JVM options for bookie
+- `BOOKIE_MEM` - JVM memory settings for bookie
+
+#### zookeeper
+
+Run a ZooKeeper server.
+
+```bash
+pulsar zookeeper
+```
+
+ZooKeeper provides cluster coordination and metadata storage.
+
+**Configuration:** `conf/zookeeper.conf`
+
+**Environment Variables:**
+- `PULSAR_ZK_CONF` - Path to ZooKeeper configuration file
+
+#### configuration-store
+
+Run a configuration store (global ZooKeeper) server.
+
+```bash
+pulsar configuration-store
+```
+
+The configuration store manages cross-cluster configuration and coordination.
+
+**Configuration:** `conf/global_zookeeper.conf`
+
+**Environment Variables:**
+- `PULSAR_CONFIGURATION_STORE_CONF` - Path to configuration store file
+
+#### proxy
+
+Run a Pulsar proxy server.
+
+```bash
+pulsar proxy
+```
+
+The proxy provides an additional layer of abstraction and load balancing.
+
+**Configuration:** `conf/proxy.conf`
+
+**Environment Variables:**
+- `PULSAR_PROXY_CONF` - Path to proxy configuration file
+
+#### websocket
+
+Run a WebSocket proxy server.
+
+```bash
+pulsar websocket
+```
+
+Enables WebSocket connections for Pulsar clients.
+
+**Configuration:** `conf/websocket.conf`
+
+**Environment Variables:**
+- `PULSAR_WEBSOCKET_CONF` - Path to websocket configuration file
+
+#### functions-worker
+
+Run a Pulsar Functions worker server.
+
+```bash
+pulsar functions-worker
+```
+
+Manages and executes Pulsar Functions.
+
+**Configuration:** `conf/functions_worker.yml`
+
+**Environment Variables:**
+- `PULSAR_WORKER_CONF` - Path to functions worker configuration
+
+#### standalone
+
+Run Pulsar in standalone mode (all components in one JVM).
+
+```bash
+pulsar standalone
+```
+
+Runs broker, bookie, and ZooKeeper in a single process - ideal for development and testing.
+
+**Configuration:** `conf/standalone.conf`
+
+**Options:**
+- `--config` - Configuration file path
+- `--no-broker` - Only start ZooKeeper and BookKeeper
+- `--only-broker` - Only start Pulsar broker (requires ZooKeeper and BookKeeper)
+- `--no-functions-worker` - Don't start functions worker
+- `--stream-storage-port` - Port for stream storage
+
+<CodeGroup>
+```bash Basic standalone
+pulsar standalone
+```
+
+```bash Custom config
+pulsar standalone --config /path/to/standalone.conf
+```
+
+```bash Without functions worker
+pulsar standalone --no-functions-worker
+```
+</CodeGroup>
+
+#### autorecovery
+
+Run BookKeeper auto-recovery service.
+
+```bash
+pulsar autorecovery
+```
+
+Monitors and recovers under-replicated ledgers in BookKeeper.
+
+**Configuration:** `conf/bookkeeper.conf`
+
+### Cluster Utilities
+
+#### initialize-cluster-metadata
+
+One-time initialization of cluster metadata.
+
+```bash
+pulsar initialize-cluster-metadata \
+  --cluster my-cluster \
+  --zookeeper localhost:2181 \
+  --configuration-store localhost:2184 \
+  --web-service-url http://localhost:8080 \
+  --broker-service-url pulsar://localhost:6650
+```
+
+**Required Options:**
+- `--cluster` - Cluster name
+- `--zookeeper` - Local ZooKeeper connection string
+- `--configuration-store` - Configuration store connection string
+- `--web-service-url` - Web service URL for the cluster
+- `--broker-service-url` - Broker service URL for the cluster
+
+**Optional Options:**
+- `--web-service-url-tls` - HTTPS URL for web service
+- `--broker-service-url-tls` - TLS URL for broker service
+- `--existing-bk-metadata-service-uri` - Existing BookKeeper metadata service URI
+
+<CodeGroup>
+```bash Basic initialization
+pulsar initialize-cluster-metadata \
+  --cluster pulsar-cluster-1 \
+  --zookeeper zk1:2181,zk2:2181,zk3:2181 \
+  --configuration-store zk1:2184,zk2:2184,zk3:2184 \
+  --web-service-url http://broker.example.com:8080 \
+  --broker-service-url pulsar://broker.example.com:6650
+```
+
+```bash With TLS
+pulsar initialize-cluster-metadata \
+  --cluster secure-cluster \
+  --zookeeper zk1:2181,zk2:2181,zk3:2181 \
+  --configuration-store zk1:2184,zk2:2184,zk3:2184 \
+  --web-service-url http://broker.example.com:8080 \
+  --web-service-url-tls https://broker.example.com:8443 \
+  --broker-service-url pulsar://broker.example.com:6650 \
+  --broker-service-url-tls pulsar+ssl://broker.example.com:6651
+```
+</CodeGroup>
+
+#### delete-cluster-metadata
+
+Delete cluster metadata.
+
+```bash
+pulsar delete-cluster-metadata \
+  --cluster my-cluster \
+  --zookeeper localhost:2181 \
+  --configuration-store localhost:2184
+```
+
+**Required Options:**
+- `--cluster` - Cluster name to delete
+- `--zookeeper` - Local ZooKeeper connection string
+- `--configuration-store` - Configuration store connection string
+
+#### initialize-transaction-coordinator-metadata
+
+One-time initialization of transaction coordinator metadata.
+
+```bash
+pulsar initialize-transaction-coordinator-metadata \
+  --cluster my-cluster \
+  --configuration-store localhost:2181
+```
+
+**Required Options:**
+- `--cluster` - Cluster name
+- `--configuration-store` - Configuration store connection string
+
+**Optional Options:**
+- `--initial-num-transaction-coordinators` - Number of transaction coordinators (default: 16)
+
+#### initialize-namespace
+
+Initialize namespace metadata.
+
+```bash
+pulsar initialize-namespace my-tenant/my-namespace
+```
+
+### Topic Utilities
+
+#### compact-topic
+
+Run compaction on a topic.
+
+```bash
+pulsar compact-topic \
+  --topic persistent://public/default/my-topic
+```
+
+**Options:**
+- `--topic` - Topic name to compact
+- `--broker-conf` - Path to broker configuration file
+
+<CodeGroup>
+```bash Compact a topic
+pulsar compact-topic \
+  --topic persistent://public/default/compact-topic
+```
+
+```bash With custom broker config
+pulsar compact-topic \
+  --topic persistent://public/default/compact-topic \
+  --broker-conf /path/to/broker.conf
+```
+</CodeGroup>
+
+### Development Tools
+
+#### zookeeper-shell
+
+Open a ZooKeeper shell client.
+
+```bash
+pulsar zookeeper-shell
+```
+
+Connect to local ZooKeeper:
+
+```bash
+pulsar zookeeper-shell -server localhost:2181
+```
+
+**Common ZooKeeper Commands:**
+```bash
+ls /                    # List root znodes
+ls /admin/clusters      # List clusters
+get /admin/clusters/my-cluster  # Get cluster data
+create /test "data"     # Create znode
+delete /test            # Delete znode
+quit                    # Exit shell
+```
+
+#### broker-tool
+
+CLI tool for broker operations.
+
+```bash
+pulsar broker-tool <command>
+```
+
+**Available Commands:**
+- `load-report` - Get load report from a broker
+- `list-unload-bundles` - List bundles to be unloaded
+
+<CodeGroup>
+```bash Get load report
+pulsar broker-tool load-report
+```
+
+```bash List unload bundles
+pulsar broker-tool list-unload-bundles
+```
+</CodeGroup>
+
+#### tokens
+
+Utility to create authentication tokens.
+
+```bash
+pulsar tokens <command>
+```
+
+**Commands:**
+- `create` - Create a new token
+- `create-secret-key` - Create a new secret key
+- `create-key-pair` - Create a public/private key pair
+- `show` - Show token claims
+- `validate` - Validate a token
+
+<CodeGroup>
+```bash Create secret key
+pulsar tokens create-secret-key \
+  --output /path/to/secret.key \
+  --base64
+```
+
+```bash Create token
+pulsar tokens create \
+  --secret-key file:///path/to/secret.key \
+  --subject test-user
+```
+
+```bash Create key pair
+pulsar tokens create-key-pair \
+  --output-private-key /path/to/private.key \
+  --output-public-key /path/to/public.key
+```
+
+```bash Create token with key pair
+pulsar tokens create \
+  --private-key file:///path/to/private.key \
+  --subject test-user
+```
+
+```bash Show token claims
+pulsar tokens show --token-string eyJhbGciOiJIUzI1NiJ9...
+```
+
+```bash Validate token
+pulsar tokens validate \
+  --token-string eyJhbGciOiJIUzI1NiJ9... \
+  --secret-key file:///path/to/secret.key
+```
+</CodeGroup>
+
+#### version
+
+Display Pulsar version information.
+
+```bash
+pulsar version
+```
+
+Output:
+```
+Current version of Pulsar is: 3.0.0
+```
+
+## Environment Variables
+
+Common environment variables for all Pulsar commands:
+
+| Variable | Description |
+|----------|-------------|
+| `PULSAR_LOG_CONF` | Log4j2 configuration file (default: conf/log4j2.yaml) |
+| `PULSAR_EXTRA_OPTS` | Extra JVM options |
+| `PULSAR_EXTRA_CLASSPATH` | Additional classpath entries |
+| `PULSAR_PID_DIR` | Directory for PID files |
+| `PULSAR_STOP_TIMEOUT` | Stop timeout in seconds |
+| `PULSAR_LOG_LEVEL` | Log level (default: info) |
+| `PULSAR_LOG_ROOT_LEVEL` | Root log level |
+| `PULSAR_LOG_DIR` | Log directory (default: logs/) |
+| `PULSAR_MEM` | JVM memory settings |
+| `PULSAR_GC` | JVM GC settings |
+| `PULSAR_GC_LOG` | GC log settings |
+| `JAVA_HOME` | Java installation directory |
+
+## Configuration Files
+
+Default configuration file locations (relative to `PULSAR_HOME`):
+
+| Component | Configuration File |
+|-----------|-------------------|
+| Broker | `conf/broker.conf` |
+| Bookie | `conf/bookkeeper.conf` |
+| ZooKeeper | `conf/zookeeper.conf` |
+| Configuration Store | `conf/global_zookeeper.conf` |
+| Proxy | `conf/proxy.conf` |
+| WebSocket | `conf/websocket.conf` |
+| Functions Worker | `conf/functions_worker.yml` |
+| Standalone | `conf/standalone.conf` |
+
+## Examples
+
+### Running Standalone for Development
+
+```bash
+# Start standalone mode
+pulsar standalone
+
+# In another terminal, create a test topic
+pulsar-admin topics create-partitioned-topic \
+  persistent://public/default/test \
+  --partitions 4
+
+# Produce messages
+pulsar-client produce persistent://public/default/test \
+  --messages "Hello Pulsar"
+
+# Consume messages
+pulsar-client consume persistent://public/default/test \
+  --subscription-name my-sub \
+  --num-messages 1
+```
+
+### Setting Up a Production Cluster
+
+```bash
+# 1. Start ZooKeeper on each ZK node
+pulsar zookeeper
+
+# 2. Initialize cluster metadata (run once)
+pulsar initialize-cluster-metadata \
+  --cluster prod-cluster \
+  --zookeeper zk1:2181,zk2:2181,zk3:2181 \
+  --configuration-store zk1:2184,zk2:2184,zk3:2184 \
+  --web-service-url http://pulsar.example.com:8080 \
+  --broker-service-url pulsar://pulsar.example.com:6650
+
+# 3. Start BookKeeper on each bookie node
+pulsar bookie
+
+# 4. Start broker on each broker node
+pulsar broker
+
+# 5. (Optional) Start proxy
+pulsar proxy
+```
+
+### Enabling Transaction Support
+
+```bash
+# Initialize transaction coordinator metadata
+pulsar initialize-transaction-coordinator-metadata \
+  --cluster prod-cluster \
+  --configuration-store localhost:2181 \
+  --initial-num-transaction-coordinators 16
+
+# Start broker with transactions enabled (in broker.conf)
+# transactionCoordinatorEnabled=true
+pulsar broker
+```
+
+### Creating Authentication Tokens
+
+```bash
+# Generate a secret key
+pulsar tokens create-secret-key \
+  --output conf/secret.key \
+  --base64
+
+# Create a token for a user
+pulsar tokens create \
+  --secret-key file://conf/secret.key \
+  --subject admin-user \
+  > admin-token.txt
+
+# Validate the token
+pulsar tokens validate \
+  --token-string $(cat admin-token.txt) \
+  --secret-key file://conf/secret.key
+```
+
+### Custom JVM Settings
+
+```bash
+# Set custom memory for broker
+export PULSAR_MEM="-Xms4g -Xmx4g -XX:MaxDirectMemorySize=8g"
+pulsar broker
+
+# Set custom memory for bookie
+export BOOKIE_MEM="-Xms2g -Xmx2g -XX:MaxDirectMemorySize=4g"
+pulsar bookie
+
+# Add extra JVM options
+export PULSAR_EXTRA_OPTS="-Dpulsar.allocator.exit_on_oom=true"
+pulsar broker
+```
+
+### Using Custom Configuration
+
+```bash
+# Use custom broker config
+export PULSAR_BROKER_CONF=/path/to/my-broker.conf
+pulsar broker
+
+# Use custom log config
+export PULSAR_LOG_CONF=/path/to/my-log4j2.yaml
+pulsar broker
+```
+
+## System Requirements
+
+- **Java**: Java 17 or later (required)
+- **Memory**: Minimum 4GB RAM for standalone, 8GB+ for production
+- **Disk**: Fast SSD recommended for BookKeeper
+- **Network**: Low-latency network for multi-node clusters
+
+## Running as a Service
+
+### systemd Service Example
+
+Create `/etc/systemd/system/pulsar-broker.service`:
+
+```ini
+[Unit]
+Description=Apache Pulsar Broker
+After=network.target
+
+[Service]
+Type=simple
+User=pulsar
+Group=pulsar
+Environment="PULSAR_HOME=/opt/pulsar"
+ExecStart=/opt/pulsar/bin/pulsar broker
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable pulsar-broker
+sudo systemctl start pulsar-broker
+sudo systemctl status pulsar-broker
+```
+
+## Logging
+
+Logs are written to `PULSAR_LOG_DIR` (default: `logs/`):
+
+- `pulsar-broker.log` - Broker logs
+- `bookkeeper.log` - Bookie logs
+- `zookeeper.log` - ZooKeeper logs
+- `pulsar-proxy.log` - Proxy logs
+- `pulsar-standalone.log` - Standalone logs
+
+Configure logging in `conf/log4j2.yaml`.
+
+## Troubleshooting
+
+### Check Component Status
+
+```bash
+# Check broker health
+curl http://localhost:8080/admin/v2/brokers/health
+
+# Get broker version
+pulsar version
+```
+
+### View Logs
+
+```bash
+# Tail broker logs
+tail -f logs/pulsar-broker.log
+
+# Search for errors
+grep ERROR logs/pulsar-broker.log
+```
+
+### Test ZooKeeper Connection
+
+```bash
+pulsar zookeeper-shell -server localhost:2181 ls /
+```
+
+## Related Commands
+
+- [pulsar-admin](/cli/pulsar-admin) - Administer Pulsar clusters
+- [pulsar-client](/cli/pulsar-client) - Produce and consume messages

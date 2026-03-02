@@ -1,0 +1,596 @@
+---
+title: Kubernetes Deployment
+description: Deploy Apache Pulsar on Kubernetes using Helm charts
+---
+
+Deploy Apache Pulsar on Kubernetes for cloud-native, scalable messaging. This guide uses the official Pulsar Helm chart for production-ready deployments.
+
+## Prerequisites
+
+- Kubernetes cluster (1.19+)
+- kubectl CLI configured
+- Helm 3.x installed
+- At least 3 worker nodes with 8GB+ RAM each
+- StorageClass for persistent volumes
+
+## Quick Start with Helm
+
+<Steps>
+
+<Step title="Add the Pulsar Helm repository">
+
+```bash
+helm repo add apache https://pulsar.apache.org/charts
+helm repo update
+```
+
+</Step>
+
+<Step title="Create a namespace">
+
+```bash
+kubectl create namespace pulsar
+```
+
+</Step>
+
+<Step title="Install Pulsar with default values">
+
+```bash
+helm install pulsar apache/pulsar \
+  --namespace pulsar \
+  --set initialize=true
+```
+
+This deploys a complete Pulsar cluster with ZooKeeper, BookKeeper, and brokers.
+
+</Step>
+
+<Step title="Wait for pods to be ready">
+
+```bash
+kubectl get pods -n pulsar -w
+```
+
+Wait until all pods show `Running` status.
+
+</Step>
+
+<Step title="Verify the installation">
+
+```bash
+# Get Pulsar admin service
+kubectl get svc -n pulsar pulsar-broker
+
+# Port-forward to access broker
+kubectl port-forward -n pulsar svc/pulsar-broker 8080:8080
+
+# In another terminal, check broker health
+curl http://localhost:8080/admin/v2/brokers/health
+```
+
+</Step>
+
+</Steps>
+
+## Architecture
+
+The Helm chart deploys:
+
+- **ZooKeeper StatefulSet** (3 replicas) - Metadata coordination
+- **BookKeeper StatefulSet** (3 replicas) - Message storage
+- **Broker Deployment** (3 replicas) - Message serving
+- **Proxy Deployment** (optional) - Load balancing
+- **Services** - ClusterIP and LoadBalancer configurations
+- **Persistent Volumes** - For ZooKeeper and BookKeeper data
+
+## Production Configuration
+
+### Custom Values File
+
+Create `pulsar-values.yaml` for production settings:
+
+```yaml
+# pulsar-values.yaml
+
+# Cluster configuration
+namespace: pulsar
+clusterName: pulsar-cluster
+
+# Image configuration
+images:
+  broker:
+    repository: apachepulsar/pulsar
+    tag: 3.3.0
+    pullPolicy: IfNotPresent
+  bookie:
+    repository: apachepulsar/pulsar
+    tag: 3.3.0
+    pullPolicy: IfNotPresent
+  zookeeper:
+    repository: apachepulsar/pulsar
+    tag: 3.3.0
+    pullPolicy: IfNotPresent
+
+# ZooKeeper configuration
+zookeeper:
+  replicaCount: 3
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 1000m
+    limits:
+      memory: 4Gi
+      cpu: 2000m
+  persistence:
+    enabled: true
+    storageClass: "fast-ssd"
+    size: 20Gi
+  configData:
+    PULSAR_MEM: "-Xms2g -Xmx2g"
+    PULSAR_GC: "-XX:+UseG1GC -XX:MaxGCPauseMillis=10"
+
+# BookKeeper configuration
+bookkeeper:
+  replicaCount: 3
+  resources:
+    requests:
+      memory: 4Gi
+      cpu: 2000m
+    limits:
+      memory: 8Gi
+      cpu: 4000m
+  persistence:
+    journal:
+      enabled: true
+      storageClass: "fast-ssd"
+      size: 50Gi
+    ledgers:
+      enabled: true
+      storageClass: "standard"
+      size: 200Gi
+  configData:
+    PULSAR_MEM: "-Xms4g -Xmx4g -XX:MaxDirectMemorySize=4g"
+    PULSAR_GC: "-XX:+UseG1GC -XX:MaxGCPauseMillis=10"
+    # BookKeeper settings
+    journalMaxSizeMB: "2048"
+    journalMaxBackups: "5"
+    journalSyncData: "true"
+    ledgerStorageClass: "org.apache.bookkeeper.bookie.storage.ldb.DbLedgerStorage"
+    diskUsageThreshold: "0.95"
+    autoRecoveryDaemonEnabled: "true"
+    statsProviderClass: "org.apache.bookkeeper.stats.prometheus.PrometheusMetricsProvider"
+    prometheusStatsHttpPort: "8000"
+
+# Broker configuration
+broker:
+  replicaCount: 3
+  resources:
+    requests:
+      memory: 4Gi
+      cpu: 2000m
+    limits:
+      memory: 8Gi
+      cpu: 4000m
+  configData:
+    PULSAR_MEM: "-Xms4g -Xmx4g -XX:MaxDirectMemorySize=4g"
+    PULSAR_GC: "-XX:+UseG1GC -XX:MaxGCPauseMillis=10"
+    # Managed ledger settings
+    managedLedgerDefaultEnsembleSize: "2"
+    managedLedgerDefaultWriteQuorum: "2"
+    managedLedgerDefaultAckQuorum: "2"
+    # Load balancer
+    loadBalancerEnabled: "true"
+    loadManagerClassName: "org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerImpl"
+    # Message retention
+    defaultRetentionTimeInMinutes: "10080"  # 7 days
+    defaultRetentionSizeInMB: "102400"  # 100 GB
+    # Auto topic creation
+    allowAutoTopicCreation: "true"
+    allowAutoTopicCreationType: "non-partitioned"
+
+# Proxy configuration
+proxy:
+  replicaCount: 2
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 1000m
+    limits:
+      memory: 4Gi
+      cpu: 2000m
+  service:
+    type: LoadBalancer
+    ports:
+      - name: pulsar
+        port: 6650
+        protocol: TCP
+      - name: http
+        port: 8080
+        protocol: TCP
+
+# Monitoring
+monitoring:
+  prometheus: true
+  grafana: true
+  alert_manager: true
+
+# Persistence
+persistence:
+  storageClass: "fast-ssd"
+
+# Initialization
+initialize: true
+```
+
+### Deploy with Custom Values
+
+```bash
+helm install pulsar apache/pulsar \
+  --namespace pulsar \
+  --values pulsar-values.yaml
+```
+
+## Resource Requirements
+
+### Minimum Production Setup
+
+| Component | Replicas | CPU | Memory | Storage |
+|-----------|----------|-----|--------|----------|
+| ZooKeeper | 3 | 1 core | 2 GB | 20 GB |
+| BookKeeper | 3 | 2 cores | 4 GB | 50 GB (journal) + 200 GB (ledgers) |
+| Broker | 3 | 2 cores | 4 GB | - |
+| Proxy | 2 | 1 core | 2 GB | - |
+
+### Recommended Production Setup
+
+| Component | Replicas | CPU | Memory | Storage |
+|-----------|----------|-----|--------|----------|
+| ZooKeeper | 5 | 2 cores | 4 GB | 50 GB |
+| BookKeeper | 5+ | 4 cores | 8 GB | 100 GB (journal) + 500 GB (ledgers) |
+| Broker | 5+ | 4 cores | 8 GB | - |
+| Proxy | 3 | 2 cores | 4 GB | - |
+
+## Storage Configuration
+
+### StorageClass for BookKeeper
+
+Create separate storage classes for journal (fast SSD) and ledgers (standard):
+
+```yaml
+# fast-ssd-storageclass.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-ssd
+provisioner: kubernetes.io/aws-ebs
+parameters:
+  type: gp3
+  iops: "3000"
+  throughput: "125"
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+```
+
+Apply:
+
+```bash
+kubectl apply -f fast-ssd-storageclass.yaml
+```
+
+## Accessing the Cluster
+
+### Port Forwarding (Development)
+
+```bash
+# Access broker admin API
+kubectl port-forward -n pulsar svc/pulsar-broker 8080:8080
+
+# Access broker binary protocol
+kubectl port-forward -n pulsar svc/pulsar-broker 6650:6650
+```
+
+### LoadBalancer (Production)
+
+Configure LoadBalancer service in values:
+
+```yaml
+proxy:
+  service:
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: nlb
+```
+
+Get the external IP:
+
+```bash
+kubectl get svc -n pulsar pulsar-proxy
+```
+
+### Ingress (HTTP/HTTPS)
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pulsar-ingress
+  namespace: pulsar
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+  - hosts:
+    - pulsar.example.com
+    secretName: pulsar-tls
+  rules:
+  - host: pulsar.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: pulsar-broker
+            port:
+              number: 8080
+```
+
+## Scaling
+
+### Scale Brokers
+
+```bash
+# Using kubectl
+kubectl scale deployment -n pulsar pulsar-broker --replicas=5
+
+# Using Helm upgrade
+helm upgrade pulsar apache/pulsar \
+  --namespace pulsar \
+  --set broker.replicaCount=5
+```
+
+### Scale BookKeeper
+
+```bash
+helm upgrade pulsar apache/pulsar \
+  --namespace pulsar \
+  --set bookkeeper.replicaCount=5
+```
+
+### Horizontal Pod Autoscaling
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: pulsar-broker-hpa
+  namespace: pulsar
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pulsar-broker
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+```
+
+## Monitoring and Observability
+
+### Prometheus Integration
+
+The Helm chart includes Prometheus exporters:
+
+```yaml
+monitoring:
+  prometheus: true
+  serviceMonitor:
+    enabled: true
+```
+
+### Grafana Dashboards
+
+Import Pulsar dashboards:
+
+```bash
+# Port-forward Grafana
+kubectl port-forward -n pulsar svc/pulsar-grafana 3000:3000
+```
+
+Access at http://localhost:3000 and import dashboard ID: 10849
+
+### Log Aggregation
+
+Use Fluent Bit to collect logs:
+
+```yaml
+fluentbit:
+  enabled: true
+  backend:
+    type: es
+    es:
+      host: elasticsearch.logging.svc.cluster.local
+      port: 9200
+```
+
+## Security
+
+### Enable TLS
+
+```yaml
+# In values.yaml
+tls:
+  enabled: true
+  broker:
+    enabled: true
+    cert: |
+      -----BEGIN CERTIFICATE-----
+      ...
+      -----END CERTIFICATE-----
+    key: |
+      -----BEGIN PRIVATE KEY-----
+      ...
+      -----END PRIVATE KEY-----
+  proxy:
+    enabled: true
+```
+
+### Enable Authentication
+
+```yaml
+auth:
+  authentication:
+    enabled: true
+    provider: "jwt"
+    jwt:
+      usingSecretKey: true
+  superUsers:
+    broker: "broker-admin"
+    proxy: "proxy-admin"
+    client: "admin"
+```
+
+## Upgrading
+
+### Check for Updates
+
+```bash
+helm repo update
+helm search repo apache/pulsar --versions
+```
+
+### Upgrade Pulsar
+
+```bash
+helm upgrade pulsar apache/pulsar \
+  --namespace pulsar \
+  --values pulsar-values.yaml \
+  --version 3.3.0
+```
+
+### Rolling Upgrade Strategy
+
+1. Upgrade ZooKeeper nodes one by one
+2. Upgrade BookKeeper nodes one by one
+3. Upgrade brokers (automatic rolling update)
+4. Upgrade proxies
+
+## Backup and Disaster Recovery
+
+### Backup ZooKeeper Data
+
+```bash
+# Backup ZooKeeper snapshots
+kubectl exec -n pulsar pulsar-zookeeper-0 -- tar czf /tmp/zk-backup.tar.gz /pulsar/data/zookeeper
+kubectl cp pulsar/pulsar-zookeeper-0:/tmp/zk-backup.tar.gz ./zk-backup.tar.gz
+```
+
+### Backup BookKeeper Ledgers
+
+Use VolumeSnapshot for PersistentVolumes:
+
+```yaml
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: bookie-ledger-snapshot
+  namespace: pulsar
+spec:
+  volumeSnapshotClassName: csi-snapshot-class
+  source:
+    persistentVolumeClaimName: journal-pulsar-bookie-0
+```
+
+## Troubleshooting
+
+### Pod Not Starting
+
+```bash
+# Check pod status
+kubectl get pods -n pulsar
+
+# Describe pod
+kubectl describe pod -n pulsar pulsar-broker-0
+
+# Check logs
+kubectl logs -n pulsar pulsar-broker-0 --tail=100
+```
+
+### PersistentVolumeClaim Pending
+
+```bash
+# Check PVC status
+kubectl get pvc -n pulsar
+
+# Describe PVC
+kubectl describe pvc -n pulsar journal-pulsar-bookie-0
+
+# Check StorageClass
+kubectl get storageclass
+```
+
+### Network Issues
+
+```bash
+# Test connectivity to ZooKeeper
+kubectl exec -n pulsar pulsar-broker-0 -- nc -zv pulsar-zookeeper 2181
+
+# Test connectivity to BookKeeper
+kubectl exec -n pulsar pulsar-broker-0 -- nc -zv pulsar-bookie-0.pulsar-bookie 3181
+```
+
+## Performance Tuning
+
+### Node Affinity
+
+Dedicate nodes for BookKeeper:
+
+```yaml
+bookkeeper:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: node-role.kubernetes.io/bookie
+            operator: In
+            values:
+            - "true"
+```
+
+### Pod Disruption Budget
+
+```yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pulsar-bookie-pdb
+  namespace: pulsar
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: pulsar
+      component: bookkeeper
+```
+
+## Next Steps
+
+- Configure [Multi-Cluster Replication](/features/geo-replication) across Kubernetes clusters
+- Set up [Monitoring](/operations/monitoring) with Prometheus and Grafana
+- Implement [GitOps](/operations/gitops) with ArgoCD or Flux
+- Learn about [Pulsar Operators](/deployment/operators) for advanced cluster management

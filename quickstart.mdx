@@ -1,80 +1,430 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart guide
+description: Get started with Apache Pulsar in minutes using standalone mode. Learn the basics of pub-sub messaging with producers and consumers.
 ---
 
-## Get started in three steps
+This quickstart guide gets you up and running with Apache Pulsar in standalone mode. You'll start a Pulsar service, create a topic, and send and receive messages using both the CLI and client libraries.
 
-Get your documentation site running locally and make your first customization.
+<Note>
+Standalone mode runs all Pulsar components (broker, BookKeeper, and ZooKeeper) in a single JVM process. It's perfect for development and testing, but not recommended for production use.
+</Note>
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+Before you begin, ensure you have:
 
-### Step 2: Deploy your changes
+- Java 17 or 21 installed (see [Java version requirements](/installation#java-requirements))
+- Docker installed (alternative to local installation)
+- Basic understanding of pub-sub messaging concepts
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+## Start Pulsar in standalone mode
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+<Tip>
+The fastest way to try Pulsar is using Docker. Skip the installation and jump straight to running Pulsar.
+</Tip>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+<CodeGroup>
+```bash Docker
+# Pull the latest Pulsar image
+docker pull apachepulsar/pulsar:latest
 
-### Step 3: Go live
+# Start Pulsar in standalone mode
+docker run -it -p 6650:6650 -p 8080:8080 \
+  apachepulsar/pulsar:latest \
+  bin/pulsar standalone
+```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+```bash Local installation
+# Navigate to your Pulsar installation directory
+cd /path/to/pulsar
+
+# Start Pulsar standalone
+bin/pulsar standalone
+```
+</CodeGroup>
+
+Pulsar will start and display logs indicating that the broker is ready:
+
+```
+INFO  org.apache.pulsar.broker.PulsarService - messaging service is ready
+```
+
+<Info>
+The standalone service runs on:
+- **Broker service**: `pulsar://localhost:6650`
+- **HTTP service**: `http://localhost:8080`
+</Info>
+
+## Publish and consume messages with CLI
+
+Let's start by using Pulsar's command-line tools to send and receive messages.
+
+<Steps>
+  <Step title="Open a new terminal for the consumer">
+    Start a consumer that will listen for messages on a topic:
+
+    <CodeGroup>
+    ```bash Docker
+    docker exec -it <container-id> bin/pulsar-client consume \
+      persistent://public/default/my-topic \
+      --subscription-name my-subscription \
+      --num-messages 0
+    ```
+
+    ```bash Local
+    bin/pulsar-client consume \
+      persistent://public/default/my-topic \
+      --subscription-name my-subscription \
+      --num-messages 0
+    ```
+    </CodeGroup>
+
+    The consumer will start and wait for messages. The `--num-messages 0` flag means it will run indefinitely.
+  </Step>
+
+  <Step title="Open another terminal for the producer">
+    In a new terminal, send messages to the topic:
+
+    <CodeGroup>
+    ```bash Docker
+    docker exec -it <container-id> bin/pulsar-client produce \
+      persistent://public/default/my-topic \
+      --messages "Hello Pulsar" \
+      --num-produce 10
+    ```
+
+    ```bash Local
+    bin/pulsar-client produce \
+      persistent://public/default/my-topic \
+      --messages "Hello Pulsar" \
+      --num-produce 10
+    ```
+    </CodeGroup>
+
+    This sends 10 messages to the topic.
+  </Step>
+
+  <Step title="View the messages">
+    Switch back to the consumer terminal. You should see the messages being received:
+
+    ```
+    ----- got message -----
+    key:[null], properties:[], content:Hello Pulsar
+    ----- got message -----
+    key:[null], properties:[], content:Hello Pulsar
+    ...
+    ```
+  </Step>
+</Steps>
+
+## Create your first producer
+
+Now let's write code to produce messages. Here are examples using different Pulsar client libraries:
+
+<CodeGroup>
+```java Java
+import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.Producer;
+import org.apache.pulsar.client.api.Schema;
+
+public class ProducerExample {
+    public static void main(String[] args) throws Exception {
+        // Create a Pulsar client instance
+        PulsarClient client = PulsarClient.builder()
+                .serviceUrl("pulsar://localhost:6650")
+                .build();
+
+        // Create a producer on a topic
+        Producer<String> producer = client.newProducer(Schema.STRING)
+                .topic("persistent://public/default/my-topic")
+                .create();
+
+        // Send 10 messages to the topic
+        for (int i = 0; i < 10; i++) {
+            String message = "Message " + i;
+            producer.send(message);
+            System.out.println("Sent: " + message);
+        }
+
+        // Close the producer and client
+        producer.close();
+        client.close();
+    }
+}
+```
+
+```python Python
+import pulsar
+
+# Create a Pulsar client instance
+client = pulsar.Client('pulsar://localhost:6650')
+
+# Create a producer on a topic
+producer = client.create_producer(
+    'persistent://public/default/my-topic'
+)
+
+# Send 10 messages to the topic
+for i in range(10):
+    message = f'Message {i}'.encode('utf-8')
+    producer.send(message)
+    print(f'Sent: Message {i}')
+
+# Close the producer and client
+producer.close()
+client.close()
+```
+
+```go Go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+
+    "github.com/apache/pulsar-client-go/pulsar"
+)
+
+func main() {
+    // Create a Pulsar client instance
+    client, err := pulsar.NewClient(pulsar.ClientOptions{
+        URL: "pulsar://localhost:6650",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer client.Close()
+
+    // Create a producer on a topic
+    producer, err := client.CreateProducer(pulsar.ProducerOptions{
+        Topic: "persistent://public/default/my-topic",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer producer.Close()
+
+    // Send 10 messages to the topic
+    for i := 0; i < 10; i++ {
+        message := fmt.Sprintf("Message %d", i)
+        _, err := producer.Send(context.Background(), &pulsar.ProducerMessage{
+            Payload: []byte(message),
+        })
+        if err != nil {
+            log.Fatal(err)
+        }
+        fmt.Printf("Sent: %s\n", message)
+    }
+}
+```
+
+```javascript Node.js
+const Pulsar = require('pulsar-client');
+
+(async () => {
+  // Create a Pulsar client instance
+  const client = new Pulsar.Client({
+    serviceUrl: 'pulsar://localhost:6650',
+  });
+
+  // Create a producer on a topic
+  const producer = await client.createProducer({
+    topic: 'persistent://public/default/my-topic',
+  });
+
+  // Send 10 messages to the topic
+  for (let i = 0; i < 10; i++) {
+    const message = `Message ${i}`;
+    await producer.send({
+      data: Buffer.from(message),
+    });
+    console.log(`Sent: ${message}`);
+  }
+
+  // Close the producer and client
+  await producer.close();
+  await client.close();
+})();
+```
+</CodeGroup>
+
+<Note>
+These examples use the actual Pulsar client API from the source code at `pulsar-client-api/src/main/java/org/apache/pulsar/client/api/PulsarClient.java`.
+</Note>
+
+## Create your first consumer
+
+Now let's create a consumer to receive the messages:
+
+<CodeGroup>
+```java Java
+import org.apache.pulsar.client.api.*;
+
+public class ConsumerExample {
+    public static void main(String[] args) throws Exception {
+        // Create a Pulsar client instance
+        PulsarClient client = PulsarClient.builder()
+                .serviceUrl("pulsar://localhost:6650")
+                .build();
+
+        // Create a consumer on a topic with a subscription
+        Consumer<String> consumer = client.newConsumer(Schema.STRING)
+                .topic("persistent://public/default/my-topic")
+                .subscriptionName("my-subscription")
+                .subscribe();
+
+        // Receive and process messages
+        while (true) {
+            Message<String> message = consumer.receive();
+            System.out.println("Got message: " + message.getValue());
+            consumer.acknowledge(message);
+        }
+    }
+}
+```
+
+```python Python
+import pulsar
+
+# Create a Pulsar client instance
+client = pulsar.Client('pulsar://localhost:6650')
+
+# Create a consumer on a topic with a subscription
+consumer = client.subscribe(
+    'persistent://public/default/my-topic',
+    subscription_name='my-subscription'
+)
+
+# Receive and process messages
+while True:
+    message = consumer.receive()
+    print(f"Got message: {message.data().decode('utf-8')}")
+    consumer.acknowledge(message)
+```
+
+```go Go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+
+    "github.com/apache/pulsar-client-go/pulsar"
+)
+
+func main() {
+    // Create a Pulsar client instance
+    client, err := pulsar.NewClient(pulsar.ClientOptions{
+        URL: "pulsar://localhost:6650",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer client.Close()
+
+    // Create a consumer on a topic with a subscription
+    consumer, err := client.Subscribe(pulsar.ConsumerOptions{
+        Topic:            "persistent://public/default/my-topic",
+        SubscriptionName: "my-subscription",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer consumer.Close()
+
+    // Receive and process messages
+    for {
+        message, err := consumer.Receive(context.Background())
+        if err != nil {
+            log.Fatal(err)
+        }
+        fmt.Printf("Got message: %s\n", string(message.Payload()))
+        consumer.Acknowledge(message)
+    }
+}
+```
+
+```javascript Node.js
+const Pulsar = require('pulsar-client');
+
+(async () => {
+  // Create a Pulsar client instance
+  const client = new Pulsar.Client({
+    serviceUrl: 'pulsar://localhost:6650',
+  });
+
+  // Create a consumer on a topic with a subscription
+  const consumer = await client.subscribe({
+    topic: 'persistent://public/default/my-topic',
+    subscription: 'my-subscription',
+  });
+
+  // Receive and process messages
+  for await (const message of consumer) {
+    console.log(`Got message: ${message.getData().toString()}`);
+    consumer.acknowledge(message);
+  }
+})();
+```
+</CodeGroup>
+
+## Understanding topics and subscriptions
+
+<Info>
+In Pulsar, topics are named channels for transmitting messages from producers to consumers. Subscriptions are named configurations that determine how consumers consume messages from topics.
+</Info>
+
+### Topic naming
+
+The complete topic name format is:
+
+```
+persistent://tenant/namespace/topic
+```
+
+- **persistent**: Message durability (persistent or non-persistent)
+- **tenant**: Logical grouping for multi-tenancy (default: `public`)
+- **namespace**: Administrative unit within a tenant (default: `default`)
+- **topic**: The actual topic name
+
+### Subscription types
+
+Pulsar supports multiple subscription types:
+
+<CardGroup cols={2}>
+  <Card title="Exclusive" icon="lock">
+    Only one consumer can subscribe. Guarantees message ordering.
+  </Card>
+  
+  <Card title="Shared" icon="share-nodes">
+    Multiple consumers share the subscription. Messages are distributed round-robin.
+  </Card>
+  
+  <Card title="Failover" icon="shield-halved">
+    Multiple consumers, but only one is active. Provides high availability.
+  </Card>
+  
+  <Card title="Key_Shared" icon="key">
+    Messages with the same key go to the same consumer. Combines ordering and parallelism.
+  </Card>
+</CardGroup>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Installation" icon="download" href="/installation">
+    Learn how to install Pulsar for production environments
+  </Card>
+  
+  <Card title="Concepts" icon="book" href="/concepts">
+    Dive deeper into Pulsar's architecture and concepts
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+<Warning>
+Remember to stop your standalone Pulsar instance when you're done:
+- Press `Ctrl+C` in the terminal running Pulsar
+- For Docker: `docker stop <container-id>`
+</Warning>

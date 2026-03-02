@@ -1,0 +1,199 @@
+---
+title: Client libraries overview
+description: Overview of Apache Pulsar client libraries for multiple programming languages
+---
+
+Apache Pulsar provides client libraries in multiple programming languages, allowing you to build applications that produce and consume messages from Pulsar topics.
+
+## Available client libraries
+
+Pulsar offers official client libraries for the following languages:
+
+<CardGroup cols={2}>
+  <Card title="Java" icon="java" href="/clients/java">
+    Native Java client with full feature support
+  </Card>
+  <Card title="Python" icon="python" href="/clients/python">
+    Python client for building data pipelines
+  </Card>
+  <Card title="Go" icon="golang" href="/clients/go">
+    Go client for high-performance applications
+  </Card>
+  <Card title="C++" icon="c" href="/clients/cpp">
+    Native C++ client for low-latency use cases
+  </Card>
+  <Card title="Node.js" icon="node-js" href="/clients/nodejs">
+    JavaScript/TypeScript client for Node.js
+  </Card>
+  <Card title=".NET/C#" icon="microsoft" href="/clients/dotnet">
+    Modern .NET client for C# applications
+  </Card>
+</CardGroup>
+
+## Client features
+
+All Pulsar client libraries provide:
+
+- **Producer API** - Publish messages to topics with sync/async support
+- **Consumer API** - Subscribe to topics with various subscription types
+- **Reader API** - Read messages from specific positions
+- **Schema support** - Built-in serialization with Avro, JSON, Protobuf
+- **Authentication** - TLS, JWT, OAuth 2.0, and custom auth plugins
+- **Compression** - LZ4, Zlib, Zstd, and Snappy compression
+- **Batching** - Automatic message batching for throughput
+- **Partitioning** - Automatic routing for partitioned topics
+
+## Choosing a client library
+
+### Java client
+
+The Java client is the most feature-complete implementation and is maintained as part of the main Pulsar repository.
+
+**Use Java when:**
+- Building enterprise applications with JVM
+- Need access to latest Pulsar features
+- Building Pulsar Functions in Java
+- Require maximum compatibility
+
+### Python client
+
+The Python client is a C++ binding providing native performance with Python ergonomics.
+
+**Use Python when:**
+- Building data processing pipelines
+- Working with data science frameworks
+- Need rapid development
+- Integrating with ML workflows
+
+### Go client
+
+The Go client is a pure Go implementation optimized for cloud-native applications.
+
+**Use Go when:**
+- Building microservices
+- Deploying in Kubernetes
+- Need lightweight containers
+- Require strong concurrency
+
+### C++ client
+
+The C++ client provides the lowest latency and highest throughput.
+
+**Use C++ when:**
+- Building low-latency systems
+- Need maximum performance
+- Working in embedded systems
+- Have existing C++ codebases
+
+### Node.js client
+
+The Node.js client enables JavaScript/TypeScript applications to use Pulsar.
+
+**Use Node.js when:**
+- Building web applications
+- Using JavaScript ecosystem
+- Need TypeScript support
+- Working with Express/Fastify
+
+### .NET client
+
+The .NET client (DotPulsar) is a modern C# implementation for .NET Core and .NET Framework.
+
+**Use .NET when:**
+- Building .NET applications
+- Using C# or F#
+- Need Windows support
+- Working with Azure
+
+## Installation
+
+Each client library has its own installation method:
+
+<CodeGroup>
+
+```xml Java (Maven)
+<dependency>
+  <groupId>org.apache.pulsar</groupId>
+  <artifactId>pulsar-client</artifactId>
+  <version>4.2.0</version>
+</dependency>
+```
+
+```bash Python
+pip install pulsar-client
+```
+
+```bash Go
+go get -u github.com/apache/pulsar-client-go/pulsar
+```
+
+```bash C++
+apt-get install libpulsar-dev
+```
+
+```bash Node.js
+npm install pulsar-client
+```
+
+```bash .NET
+dotnet add package DotPulsar
+```
+
+</CodeGroup>
+
+## Basic usage
+
+All client libraries follow a similar pattern:
+
+<Steps>
+  <Step title="Create a client">
+    Connect to the Pulsar cluster
+  </Step>
+  <Step title="Create a producer or consumer">
+    Build a producer to publish or consumer to subscribe
+  </Step>
+  <Step title="Send or receive messages">
+    Publish or consume messages
+  </Step>
+  <Step title="Close resources">
+    Close the client when done
+  </Step>
+</Steps>
+
+## Authentication
+
+All clients support multiple authentication methods:
+
+- **TLS Authentication** - Client certificates
+- **Token Authentication** - JWT tokens
+- **OAuth 2.0** - OAuth authentication flow
+- **Athenz** - Yahoo's Athenz authorization
+- **SASL/Kerberos** - Enterprise authentication
+
+## Client repositories
+
+The client libraries are maintained in separate repositories:
+
+- [Java Client](https://github.com/apache/pulsar) - Main repository
+- [Python Client](https://github.com/apache/pulsar-client-python)
+- [Go Client](https://github.com/apache/pulsar-client-go)
+- [C++ Client](https://github.com/apache/pulsar-client-cpp)
+- [Node.js Client](https://github.com/apache/pulsar-client-node)
+- [.NET Client](https://github.com/apache/pulsar-dotpulsar)
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Java client" icon="java" href="/clients/java">
+    Get started with the Java client
+  </Card>
+  <Card title="Producer API" icon="paper-plane" href="/concepts/producers-consumers">
+    Learn about producers and consumers
+  </Card>
+  <Card title="Schema support" icon="database" href="/concepts/schemas">
+    Understand Pulsar schemas
+  </Card>
+  <Card title="Authentication" icon="lock" href="/security/authentication">
+    Configure client authentication
+  </Card>
+</CardGroup>

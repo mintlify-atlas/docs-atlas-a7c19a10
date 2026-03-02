@@ -1,0 +1,507 @@
+---
+title: Cluster Deployment
+description: Deploy Apache Pulsar as a distributed cluster for production workloads
+---
+
+A production Pulsar cluster consists of multiple components working together: ZooKeeper for coordination, BookKeeper for persistent storage, and Pulsar brokers for message routing. This guide covers deploying a multi-node cluster.
+
+## Architecture Overview
+
+A typical Pulsar cluster includes:
+
+- **ZooKeeper ensemble** (3-5 nodes) - Metadata storage and coordination
+- **BookKeeper cluster** (3+ nodes) - Persistent message storage
+- **Pulsar brokers** (2+ nodes) - Message serving and topic management
+- **Pulsar proxy** (optional) - Load balancing and protocol translation
+
+## Prerequisites
+
+- Multiple Linux servers (minimum 3 for ZooKeeper, 3 for BookKeeper, 2 for brokers)
+- Java 11 or higher on all nodes
+- Network connectivity between all nodes
+- Sufficient disk space (especially for BookKeeper nodes)
+- At least 8GB RAM per node
+
+## Deployment Steps
+
+<Steps>
+
+<Step title="Install Pulsar on all nodes">
+
+Download and extract Pulsar on each server:
+
+```bash
+wget https://archive.apache.org/dist/pulsar/pulsar-3.x.x/apache-pulsar-3.x.x-bin.tar.gz
+tar xvfz apache-pulsar-3.x.x-bin.tar.gz
+cd apache-pulsar-3.x.x
+```
+
+</Step>
+
+<Step title="Deploy ZooKeeper ensemble">
+
+On each ZooKeeper node (e.g., zk1, zk2, zk3), configure `conf/zookeeper.conf`:
+
+```properties
+# Server ID (unique for each node: 1, 2, 3)
+serverId=1
+
+# Data directory
+dataDir=data/zookeeper
+
+# Client port
+clientPort=2181
+
+# Server list
+server.1=zk1:2888:3888
+server.2=zk2:2888:3888
+server.3=zk3:2888:3888
+```
+
+Create the server ID file:
+
+```bash
+mkdir -p data/zookeeper
+echo "1" > data/zookeeper/myid  # Use 1, 2, or 3 for each node
+```
+
+Start ZooKeeper on each node:
+
+```bash
+bin/pulsar-daemon start zookeeper
+```
+
+Verify ZooKeeper is running:
+
+```bash
+bin/pulsar zookeeper-shell -server localhost:2181 ls /
+```
+
+</Step>
+
+<Step title="Initialize cluster metadata">
+
+On one of the ZooKeeper nodes, initialize the cluster metadata:
+
+```bash
+bin/pulsar initialize-cluster-metadata \
+  --cluster pulsar-cluster \
+  --metadata-store zk:zk1:2181,zk2:2181,zk3:2181 \
+  --configuration-metadata-store zk:zk1:2181,zk2:2181,zk3:2181 \
+  --web-service-url http://broker1:8080,broker2:8080 \
+  --broker-service-url pulsar://broker1:6650,broker2:6650
+```
+
+</Step>
+
+<Step title="Deploy BookKeeper bookies">
+
+On each BookKeeper node, configure `conf/bookkeeper.conf`:
+
+```properties
+# Bookie port
+bookiePort=3181
+
+# ZooKeeper connection
+zkServers=zk1:2181,zk2:2181,zk3:2181
+
+# Journal directory (use dedicated SSD)
+journalDirectory=data/bookkeeper/journal
+
+# Ledger directories (use separate disks)
+ledgerDirectories=data/bookkeeper/ledgers
+
+# Storage settings
+ledgerStorageClass=org.apache.bookkeeper.bookie.storage.ldb.DbLedgerStorage
+
+# Disk usage threshold (95%)
+diskUsageThreshold=0.95
+
+# Auto-recovery
+autoRecoveryDaemonEnabled=true
+
+# Statistics
+statsProviderClass=org.apache.bookkeeper.stats.prometheus.PrometheusMetricsProvider
+prometheusStatsHttpPort=8000
+
+# Read-only mode when disk full
+readOnlyModeEnabled=true
+```
+
+Start BookKeeper on each node:
+
+```bash
+bin/pulsar-daemon start bookie
+```
+
+Verify bookies are registered:
+
+```bash
+bin/bookkeeper shell listbookies -rw
+```
+
+</Step>
+
+<Step title="Deploy Pulsar brokers">
+
+On each broker node, configure `conf/broker.conf`:
+
+```properties
+# Cluster name
+clusterName=pulsar-cluster
+
+# ZooKeeper connection
+metadataStoreUrl=zk:zk1:2181,zk2:2181,zk3:2181
+configurationMetadataStoreUrl=zk:zk1:2181,zk2:2181,zk3:2181
+
+# Broker service ports
+brokerServicePort=6650
+webServicePort=8080
+
+# Advertised address (use actual hostname/IP)
+advertisedAddress=broker1.example.com
+bindAddress=0.0.0.0
+
+# Managed ledger settings
+managedLedgerDefaultEnsembleSize=2
+managedLedgerDefaultWriteQuorum=2
+managedLedgerDefaultAckQuorum=2
+
+# Load balancer
+loadBalancerEnabled=true
+loadManagerClassName=org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerImpl
+loadBalancerSheddingEnabled=true
+
+# Auto topic creation
+allowAutoTopicCreation=true
+allowAutoTopicCreationType=non-partitioned
+
+# Message retention
+defaultRetentionTimeInMinutes=0
+defaultRetentionSizeInMB=0
+
+# Replication
+replicationMetricsEnabled=true
+replicationConnectionsPerBroker=16
+```
+
+Start brokers:
+
+```bash
+bin/pulsar-daemon start broker
+```
+
+Verify brokers are running:
+
+```bash
+bin/pulsar-admin brokers list pulsar-cluster
+```
+
+</Step>
+
+<Step title="Deploy Pulsar proxy (optional)">
+
+For production deployments, deploy proxy nodes for load balancing:
+
+```properties
+# conf/proxy.conf
+metadataStoreUrl=zk:zk1:2181,zk2:2181,zk3:2181
+configurationMetadataStoreUrl=zk:zk1:2181,zk2:2181,zk3:2181
+
+# Service URLs
+brokerServiceURL=pulsar://broker1:6650,broker2:6650
+brokerWebServiceURL=http://broker1:8080,http://broker2:8080
+
+# Proxy ports
+servicePort=6650
+webServicePort=8080
+```
+
+Start proxy:
+
+```bash
+bin/pulsar-daemon start proxy
+```
+
+</Step>
+
+<Step title="Create default tenant and namespace">
+
+```bash
+# Create tenant
+bin/pulsar-admin tenants create public \
+  --allowed-clusters pulsar-cluster
+
+# Create namespace with policies
+bin/pulsar-admin namespaces create public/default
+bin/pulsar-admin namespaces set-retention public/default \
+  --size 100G --time 7d
+```
+
+</Step>
+
+</Steps>
+
+## Production Configuration
+
+### BookKeeper Tuning
+
+For optimal performance, configure BookKeeper with these settings:
+
+```properties
+# Journal settings
+journalMaxSizeMB=2048
+journalMaxBackups=5
+journalPreAllocSizeMB=16
+journalWriteBufferSizeKB=64
+journalSyncData=true
+journalAdaptiveGroupWrites=true
+journalMaxGroupWaitMSec=1
+
+# Entry log settings
+logSizeLimit=1073741824
+entryLogFilePreallocationEnabled=true
+flushEntrylogBytes=268435456
+
+# Compaction
+minorCompactionThreshold=0.2
+minorCompactionInterval=3600
+majorCompactionThreshold=0.5
+majorCompactionInterval=86400
+compactionRate=1000
+
+# GC settings
+gcWaitTime=900000
+```
+
+### Broker Tuning
+
+```properties
+# Thread pools
+numIOThreads=16
+numHttpServerThreads=8
+numExecutorThreadPoolSize=8
+
+# Dispatch settings
+dispatcherMaxReadBatchSize=100
+dispatcherMaxReadSizeBytes=5242880
+dispatcherMaxRoundRobinBatchSize=20
+
+# Concurrency limits
+maxConcurrentLookupRequest=50000
+maxConcurrentTopicLoadRequest=5000
+maxConcurrentHttpRequests=1024
+
+# Message settings
+maxMessageSize=5242880
+maxUnackedMessagesPerConsumer=50000
+maxUnackedMessagesPerSubscription=200000
+```
+
+### High Availability Settings
+
+```properties
+# Broker failover
+brokerShutdownTimeoutMs=60000
+loadBalancerSheddingIntervalMinutes=1
+loadBalancerSheddingGracePeriodMinutes=30
+
+# Topic load balancing
+loadBalancerAutoBundleSplitEnabled=true
+loadBalancerAutoUnloadSplitBundlesEnabled=true
+loadBalancerNamespaceBundleMaxTopics=1000
+loadBalancerNamespaceBundleMaxSessions=1000
+```
+
+## Systemd Service Configuration
+
+Create systemd service files for automatic startup:
+
+### ZooKeeper Service
+
+```ini
+# /etc/systemd/system/pulsar-zookeeper.service
+[Unit]
+Description=Apache Pulsar ZooKeeper
+After=network.target
+
+[Service]
+Type=forking
+User=pulsar
+Group=pulsar
+ExecStart=/opt/pulsar/bin/pulsar-daemon start zookeeper
+ExecStop=/opt/pulsar/bin/pulsar-daemon stop zookeeper
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### BookKeeper Service
+
+```ini
+# /etc/systemd/system/pulsar-bookie.service
+[Unit]
+Description=Apache Pulsar BookKeeper
+After=network.target pulsar-zookeeper.service
+Requires=pulsar-zookeeper.service
+
+[Service]
+Type=forking
+User=pulsar
+Group=pulsar
+ExecStart=/opt/pulsar/bin/pulsar-daemon start bookie
+ExecStop=/opt/pulsar/bin/pulsar-daemon stop bookie
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Broker Service
+
+```ini
+# /etc/systemd/system/pulsar-broker.service
+[Unit]
+Description=Apache Pulsar Broker
+After=network.target pulsar-bookie.service
+Requires=pulsar-bookie.service
+
+[Service]
+Type=forking
+User=pulsar
+Group=pulsar
+ExecStart=/opt/pulsar/bin/pulsar-daemon start broker
+ExecStop=/opt/pulsar/bin/pulsar-daemon stop broker
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start services:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable pulsar-zookeeper pulsar-bookie pulsar-broker
+sudo systemctl start pulsar-zookeeper pulsar-bookie pulsar-broker
+```
+
+## Monitoring and Metrics
+
+### Prometheus Metrics
+
+Pulsar exposes metrics on port 8080 for brokers and 8000 for bookies:
+
+```bash
+# Broker metrics
+curl http://broker1:8080/metrics
+
+# Bookie metrics
+curl http://bookie1:8000/metrics
+```
+
+### Health Checks
+
+```bash
+# Broker health
+bin/pulsar-admin brokers healthcheck
+
+# List active brokers
+bin/pulsar-admin brokers list pulsar-cluster
+
+# Check topic stats
+bin/pulsar-admin topics stats persistent://public/default/my-topic
+```
+
+## Scaling the Cluster
+
+### Adding Brokers
+
+1. Install Pulsar on new node
+2. Configure `conf/broker.conf` with cluster settings
+3. Start the broker
+4. Verify registration: `bin/pulsar-admin brokers list pulsar-cluster`
+
+### Adding Bookies
+
+1. Install Pulsar on new node
+2. Configure `conf/bookkeeper.conf`
+3. Start the bookie: `bin/pulsar-daemon start bookie`
+4. Verify: `bin/bookkeeper shell listbookies -rw`
+
+## Disaster Recovery
+
+### Backup Configuration
+
+```bash
+# Backup ZooKeeper data
+bin/pulsar zookeeper-shell -server zk1:2181 \
+  dump / > cluster-metadata-backup.txt
+
+# Backup tenant/namespace configs
+bin/pulsar-admin tenants list > tenants-backup.txt
+bin/pulsar-admin namespaces list public > namespaces-backup.txt
+```
+
+### Cluster Recovery
+
+See the [Operations Guide](/operations/disaster-recovery) for detailed recovery procedures.
+
+## Security
+
+### Enable TLS
+
+```properties
+# Broker TLS configuration
+brokerServicePortTls=6651
+webServicePortTls=8443
+tlsEnabled=true
+tlsCertificateFilePath=/path/to/broker-cert.pem
+tlsKeyFilePath=/path/to/broker-key.pem
+tlsTrustCertsFilePath=/path/to/ca-cert.pem
+```
+
+### Enable Authentication
+
+```properties
+# Enable token-based authentication
+authenticationEnabled=true
+authenticationProviders=org.apache.pulsar.broker.authentication.AuthenticationProviderToken
+tokenSecretKey=file:///path/to/secret.key
+```
+
+## Troubleshooting
+
+### Broker Not Starting
+
+Check logs:
+
+```bash
+tail -f logs/pulsar-broker-*.log
+```
+
+Verify ZooKeeper connectivity:
+
+```bash
+bin/pulsar zookeeper-shell -server zk1:2181 ls /
+```
+
+### Bookie Not Registering
+
+Check bookie logs and verify disk space:
+
+```bash
+tail -f logs/pulsar-bookie-*.log
+df -h
+```
+
+## Next Steps
+
+- Configure [Geo-Replication](/features/geo-replication) for multi-datacenter deployments
+- Set up [Monitoring](/operations/monitoring) with Prometheus and Grafana
+- Implement [Security](/security/overview) with authentication and authorization
+- Learn about [Tiered Storage](/features/tiered-storage) for long-term retention

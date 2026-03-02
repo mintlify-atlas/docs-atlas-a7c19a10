@@ -1,0 +1,514 @@
+---
+title: pulsar-client
+description: Pulsar client CLI tool for producing and consuming messages.
+---
+
+The `pulsar-client` tool provides a command-line interface for producing and consuming messages with Apache Pulsar.
+
+## Usage
+
+```bash
+pulsar-client [options] [command] [command options]
+```
+
+## Global Options
+
+| Option | Description |
+|--------|-------------|
+| `--url` | Broker service URL (e.g., pulsar://localhost:6650) |
+| `--proxy-url` | Proxy server URL to connect through |
+| `--proxy-protocol` | Proxy protocol (SNI or None) |
+| `--auth-plugin` | Authentication plugin class name |
+| `--auth-params` | Authentication parameters |
+| `--listener-name` | Listener name for the broker |
+| `--tlsTrustCertsFilePath` | Path to TLS trust certificates |
+| `-ml, --memory-limit` | Pulsar client memory limit (e.g., 32M, 64M) |
+| `-h, --help` | Display help information |
+| `-v` | Display version information |
+
+## Available Commands
+
+### produce
+
+Produce messages to a topic.
+
+<CodeGroup>
+```bash Single message
+pulsar-client produce persistent://public/default/my-topic \
+  --messages "Hello Pulsar"
+```
+
+```bash Multiple messages
+pulsar-client produce persistent://public/default/my-topic \
+  --messages "msg1,msg2,msg3"
+```
+
+```bash From file
+pulsar-client produce persistent://public/default/my-topic \
+  --files /path/to/message.txt
+```
+
+```bash With properties
+pulsar-client produce persistent://public/default/my-topic \
+  --messages "Hello" \
+  --properties "key1=value1,key2=value2"
+```
+
+```bash With partition key
+pulsar-client produce persistent://public/default/my-topic \
+  --messages "Hello" \
+  --key "partition-key"
+```
+
+```bash Batch produce
+pulsar-client produce persistent://public/default/my-topic \
+  --messages "msg1,msg2,msg3" \
+  --num-produce 100
+```
+</CodeGroup>
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `-m, --messages` | Messages to send (comma-separated) |
+| `-f, --files` | File paths containing messages |
+| `-n, --num-produce` | Number of times to send messages |
+| `-r, --rate` | Rate in msg/sec (0 = as fast as possible) |
+| `-db, --disable-batching` | Disable batch sending |
+| `-c, --chunking` | Enable chunking for large messages |
+| `-s, --separator` | Message separator character (default: comma) |
+| `-p, --properties` | Message properties (key=value format) |
+| `-k, --key` | Partitioning key |
+| `-kvk, --key-value-key` | Key for KeyValue schema |
+| `-kvkf, --key-value-key-file` | File with key for KeyValue schema |
+| `-vs, --value-schema` | Value schema type (bytes, avro, json, string) |
+| `-ks, --key-schema` | Key schema type |
+| `-kvet, --key-value-encoding-type` | KeyValue encoding (separated or inline) |
+| `-ekn, --encryption-key-name` | Encryption key name |
+| `-ekv, --encryption-key-value` | Encryption key URI |
+| `-dr, --disable-replication` | Disable geo-replication |
+
+### consume
+
+Consume messages from a topic.
+
+<CodeGroup>
+```bash Basic consumption
+pulsar-client consume persistent://public/default/my-topic \
+  --subscription-name my-subscription \
+  --num-messages 0
+```
+
+```bash Consume with subscription type
+pulsar-client consume persistent://public/default/my-topic \
+  --subscription-name my-sub \
+  --subscription-type Shared \
+  --num-messages 100
+```
+
+```bash Consume from earliest
+pulsar-client consume persistent://public/default/my-topic \
+  --subscription-name my-sub \
+  --subscription-position Earliest \
+  --num-messages 0
+```
+
+```bash Consume with rate limit
+pulsar-client consume persistent://public/default/my-topic \
+  --subscription-name my-sub \
+  --rate 100 \
+  --num-messages 0
+```
+
+```bash Pattern subscription
+pulsar-client consume "persistent://public/default/my-.*" \
+  --subscription-name my-sub \
+  --regex \
+  --num-messages 0
+```
+
+```bash Hide message content
+pulsar-client consume persistent://public/default/my-topic \
+  --subscription-name my-sub \
+  --hide-content \
+  --num-messages 10
+```
+</CodeGroup>
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `-s, --subscription-name` | Subscription name (required) |
+| `-t, --subscription-type` | Subscription type (Exclusive, Shared, Failover, Key_Shared) |
+| `-m, --subscription-mode` | Subscription mode (Durable, NonDurable) |
+| `-p, --subscription-position` | Initial position (Latest, Earliest) |
+| `-n, --num-messages` | Number of messages (0 = infinite) |
+| `--hex` | Display binary messages in hex |
+| `--hide-content` | Don't display message content |
+| `-r, --rate` | Consume rate in msg/sec (0 = unlimited) |
+| `--regex` | Topic name is a regex pattern |
+| `-q, --queue-size` | Consumer receiver queue size |
+| `-mc, --max_chunked_msg` | Max pending chunk messages |
+| `-ac, --auto_ack_chunk_q_full` | Auto ack oldest chunked message when queue full |
+| `--pool-messages` | Use pooled message buffers |
+| `-st, --schema-type` | Schema type for decoding |
+| `-ekv, --encryption-key-value` | Private key for decryption |
+| `-cf, --crypto-failure-action` | Action on crypto failure (FAIL, DISCARD, CONSUME) |
+
+### read
+
+Read messages from a topic using a reader.
+
+<CodeGroup>
+```bash Read from earliest
+pulsar-client read persistent://public/default/my-topic \
+  --num-messages 0
+```
+
+```bash Read from specific message ID
+pulsar-client read persistent://public/default/my-topic \
+  --start-message-id earliest \
+  --num-messages 100
+```
+
+```bash Read with rate limit
+pulsar-client read persistent://public/default/my-topic \
+  --rate 50 \
+  --num-messages 0
+```
+
+```bash Read and hide content
+pulsar-client read persistent://public/default/my-topic \
+  --hide-content \
+  --num-messages 10
+```
+</CodeGroup>
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `-n, --num-messages` | Number of messages to read (0 = infinite) |
+| `--start-message-id` | Start message ID (earliest, latest, or ID) |
+| `-r, --rate` | Read rate in msg/sec (0 = unlimited) |
+| `--hex` | Display binary messages in hex |
+| `--hide-content` | Don't display message content |
+| `-q, --queue-size` | Reader receiver queue size |
+| `-mc, --max_chunked_msg` | Max pending chunk messages |
+| `-ac, --auto_ack_chunk_q_full` | Auto ack when queue is full |
+| `--pool-messages` | Use pooled message buffers |
+| `-st, --schema-type` | Schema type for decoding |
+| `-ekv, --encryption-key-value` | Private key for decryption |
+| `-cf, --crypto-failure-action` | Action on crypto failure |
+
+## Schema Types
+
+Supported schema types for producing and consuming:
+
+- `bytes` - Raw bytes (default)
+- `string` - UTF-8 strings
+- `json` - JSON format
+- `avro` - Apache Avro
+- `protobuf` - Protocol Buffers
+- `auto` - Auto-detect schema
+
+## Examples
+
+### Basic Message Production
+
+```bash
+# Produce a simple string message
+pulsar-client produce persistent://public/default/test-topic \
+  --messages "Hello, World!"
+
+# Produce multiple messages
+pulsar-client produce persistent://public/default/test-topic \
+  --messages "msg1,msg2,msg3,msg4,msg5"
+
+# Produce with custom separator
+pulsar-client produce persistent://public/default/test-topic \
+  --messages "msg1|msg2|msg3" \
+  --separator "|"
+```
+
+### Advanced Production
+
+```bash
+# Produce with properties
+pulsar-client produce persistent://public/default/test-topic \
+  --messages "Important message" \
+  --properties "priority=high,source=app1"
+
+# Produce with partition key
+pulsar-client produce persistent://public/default/test-topic \
+  --messages "User event" \
+  --key "user123"
+
+# Produce at controlled rate (100 msg/sec)
+pulsar-client produce persistent://public/default/test-topic \
+  --messages "Rate limited" \
+  --num-produce 1000 \
+  --rate 100
+
+# Produce without batching
+pulsar-client produce persistent://public/default/test-topic \
+  --messages "Unbatched message" \
+  --disable-batching
+```
+
+### Production with Files
+
+```bash
+# Produce from a single file
+pulsar-client produce persistent://public/default/test-topic \
+  --files /path/to/message.txt
+
+# Produce from multiple files
+pulsar-client produce persistent://public/default/test-topic \
+  --files "/path/file1.txt,/path/file2.txt"
+```
+
+### JSON Messages
+
+```bash
+# Produce JSON message
+pulsar-client produce persistent://public/default/json-topic \
+  --value-schema json \
+  --messages '{"name":"John","age":30}'
+
+# Produce multiple JSON messages
+pulsar-client produce persistent://public/default/json-topic \
+  --value-schema json \
+  --messages '{"id":1},{"id":2},{"id":3}'
+```
+
+### AVRO Messages
+
+```bash
+# Produce AVRO message
+pulsar-client produce persistent://public/default/avro-topic \
+  --value-schema avro \
+  --messages '{"name":"Alice","age":25}'
+```
+
+### KeyValue Schema
+
+```bash
+# Produce with KeyValue schema (separated encoding)
+pulsar-client produce persistent://public/default/kv-topic \
+  --key-value-key "key1" \
+  --messages "value1" \
+  --key-schema string \
+  --value-schema string \
+  --key-value-encoding-type separated
+
+# Produce with KeyValue schema (inline encoding)
+pulsar-client produce persistent://public/default/kv-topic \
+  --key-value-key "key2" \
+  --messages "value2" \
+  --key-schema string \
+  --value-schema string \
+  --key-value-encoding-type inline
+```
+
+### Message Consumption
+
+```bash
+# Consume with exclusive subscription (default)
+pulsar-client consume persistent://public/default/test-topic \
+  --subscription-name my-exclusive-sub \
+  --num-messages 10
+
+# Consume with shared subscription
+pulsar-client consume persistent://public/default/test-topic \
+  --subscription-name my-shared-sub \
+  --subscription-type Shared \
+  --num-messages 0
+
+# Consume from earliest message
+pulsar-client consume persistent://public/default/test-topic \
+  --subscription-name my-sub \
+  --subscription-position Earliest \
+  --num-messages 100
+
+# Consume with rate limiting
+pulsar-client consume persistent://public/default/test-topic \
+  --subscription-name my-sub \
+  --rate 10 \
+  --num-messages 0
+```
+
+### Pattern-Based Consumption
+
+```bash
+# Consume from multiple topics matching pattern
+pulsar-client consume "persistent://public/default/test-.*" \
+  --subscription-name pattern-sub \
+  --regex \
+  --num-messages 0
+
+# Consume from partition pattern
+pulsar-client consume "persistent://public/default/my-topic-partition-.*" \
+  --subscription-name partition-sub \
+  --regex \
+  --num-messages 0
+```
+
+### Reading Messages
+
+```bash
+# Read from earliest
+pulsar-client read persistent://public/default/test-topic \
+  --num-messages 100
+
+# Read from latest
+pulsar-client read persistent://public/default/test-topic \
+  --start-message-id latest \
+  --num-messages 0
+
+# Read continuously from earliest
+pulsar-client read persistent://public/default/test-topic \
+  --start-message-id earliest \
+  --num-messages 0
+```
+
+### Encrypted Messages
+
+```bash
+# Produce encrypted message
+pulsar-client produce persistent://public/default/encrypted-topic \
+  --messages "Secret message" \
+  --encryption-key-name my-key \
+  --encryption-key-value file:///path/to/public.key
+
+# Consume encrypted message
+pulsar-client consume persistent://public/default/encrypted-topic \
+  --subscription-name my-sub \
+  --encryption-key-value file:///path/to/private.key \
+  --num-messages 1
+```
+
+### Using Non-Durable Subscriptions
+
+```bash
+# Create non-durable subscription
+pulsar-client consume persistent://public/default/test-topic \
+  --subscription-name temp-sub \
+  --subscription-mode NonDurable \
+  --num-messages 10
+```
+
+## Configuration
+
+Create a configuration file at `conf/client.conf`:
+
+```properties
+brokerServiceUrl=pulsar://localhost:6650
+authPlugin=org.apache.pulsar.client.impl.auth.AuthenticationToken
+authParams=token:eyJhbGciOiJIUzI1NiJ9...
+tlsAllowInsecureConnection=false
+tlsEnableHostnameVerification=true
+tlsTrustCertsFilePath=/path/to/ca.cert.pem
+```
+
+Use with TLS:
+
+```bash
+pulsar-client --url pulsar+ssl://pulsar.example.com:6651 \
+  --tlsTrustCertsFilePath /path/to/ca.cert.pem \
+  produce persistent://public/default/secure-topic \
+  --messages "Secure message"
+```
+
+## Authentication
+
+### Token Authentication
+
+```bash
+pulsar-client --url pulsar://localhost:6650 \
+  --auth-plugin org.apache.pulsar.client.impl.auth.AuthenticationToken \
+  --auth-params "token:eyJhbGciOiJIUzI1NiJ9..." \
+  consume persistent://public/default/test-topic \
+  --subscription-name auth-sub \
+  --num-messages 10
+```
+
+### TLS Authentication
+
+```bash
+pulsar-client --url pulsar+ssl://localhost:6651 \
+  --auth-plugin org.apache.pulsar.client.impl.auth.AuthenticationTls \
+  --auth-params "tlsCertFile:/path/to/client-cert.pem,tlsKeyFile:/path/to/client-key.pem" \
+  --tlsTrustCertsFilePath /path/to/ca.cert.pem \
+  produce persistent://public/default/test-topic \
+  --messages "Authenticated message"
+```
+
+### OAuth 2.0 Authentication
+
+```bash
+pulsar-client --url pulsar://localhost:6650 \
+  --auth-plugin org.apache.pulsar.client.impl.auth.oauth2.AuthenticationOAuth2 \
+  --auth-params '{"issuerUrl":"https://issuer.com","privateKey":"file:///path/to/key.json","audience":"urn:pulsar:cluster"}' \
+  consume persistent://public/default/test-topic \
+  --subscription-name oauth-sub \
+  --num-messages 10
+```
+
+## Performance Testing
+
+```bash
+# High-throughput production
+pulsar-client produce persistent://public/default/perf-topic \
+  --messages "test" \
+  --num-produce 1000000 \
+  --rate 0
+
+# Controlled rate production
+pulsar-client produce persistent://public/default/perf-topic \
+  --messages "test" \
+  --num-produce 100000 \
+  --rate 10000
+
+# High-throughput consumption
+pulsar-client consume persistent://public/default/perf-topic \
+  --subscription-name perf-sub \
+  --subscription-type Shared \
+  --hide-content \
+  --num-messages 0 \
+  --rate 0
+```
+
+## Troubleshooting
+
+### View Message Content and Metadata
+
+```bash
+# Show full message details
+pulsar-client consume persistent://public/default/test-topic \
+  --subscription-name debug-sub \
+  --num-messages 1
+
+# Show only metadata (hide content)
+pulsar-client consume persistent://public/default/test-topic \
+  --subscription-name debug-sub \
+  --hide-content \
+  --num-messages 10
+```
+
+### Binary Messages
+
+```bash
+# Display binary messages in hex
+pulsar-client consume persistent://public/default/binary-topic \
+  --subscription-name binary-sub \
+  --hex \
+  --num-messages 10
+```
+
+## Related Commands
+
+- [pulsar-admin](/cli/pulsar-admin) - Administer Pulsar clusters
+- [pulsar](/cli/pulsar) - Run Pulsar components

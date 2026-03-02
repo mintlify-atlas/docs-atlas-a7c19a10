@@ -1,0 +1,776 @@
+---
+title: Consumer
+description: Consume messages from Pulsar topics
+---
+
+## Overview
+
+The `Consumer` interface abstracts the behavior of Pulsar's consumer. All operations on the consumer instance are thread safe.
+
+## Creating a Consumer
+
+```java
+Consumer<String> consumer = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-subscription")
+    .subscribe();
+```
+
+## Core Methods
+
+### getTopic()
+
+Get the topic for the consumer.
+
+```java
+String getTopic()
+```
+
+<ParamField path="Returns" type="String">
+  The topic name for the consumer
+</ParamField>
+
+### getSubscription()
+
+Get the subscription for the consumer.
+
+```java
+String getSubscription()
+```
+
+<ParamField path="Returns" type="String">
+  The subscription name for the consumer
+</ParamField>
+
+### getConsumerName()
+
+Get the name of consumer.
+
+```java
+String getConsumerName()
+```
+
+<ParamField path="Returns" type="String">
+  The consumer name
+</ParamField>
+
+## Receiving Messages
+
+### receive()
+
+Receives a single message in blocking mode.
+
+```java
+Message<T> receive() throws PulsarClientException
+```
+
+<ParamField path="Returns" type="Message<T>">
+  The received message, or null if the thread was interrupted
+</ParamField>
+
+This method blocks until a message is available or the consumer is closed.
+
+**Behavior when interrupted:**
+- If the thread is interrupted while waiting: returns null and resets the interrupted flag
+- If the consumer is closed while waiting: throws `PulsarClientException` with the cause `InterruptedException("Queue is terminated")`
+
+**Example:**
+```java
+while (true) {
+    Message<String> msg = consumer.receive();
+    System.out.println("Received: " + new String(msg.getData()));
+    consumer.acknowledge(msg);
+}
+```
+
+**Exceptions:**
+- `PulsarClientException.AlreadyClosedException` - if the consumer was already closed before this method was called
+- `PulsarClientException.InvalidConfigurationException` - if a message listener was defined in the configuration
+
+### receive(timeout, unit)
+
+Receive a single message with timeout.
+
+```java
+Message<T> receive(int timeout, TimeUnit unit) throws PulsarClientException
+```
+
+<ParamField path="timeout" type="int">
+  0 or less means immediate rather than infinite
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  The time unit for the timeout
+</ParamField>
+
+<ParamField path="Returns" type="Message<T>">
+  The received Message or null if no message available before timeout
+</ParamField>
+
+Retrieves a message, waiting up to the specified wait time if necessary. If consumer closes during wait, returns null immediately.
+
+**Example:**
+```java
+Message<String> msg = consumer.receive(5, TimeUnit.SECONDS);
+if (msg != null) {
+    System.out.println("Received: " + new String(msg.getData()));
+    consumer.acknowledge(msg);
+} else {
+    System.out.println("No message received within timeout");
+}
+```
+
+### receiveAsync()
+
+Receive a single message asynchronously.
+
+```java
+CompletableFuture<Message<T>> receiveAsync()
+```
+
+<ParamField path="Returns" type="CompletableFuture<Message<T>>">
+  A future that will be completed when message is available
+</ParamField>
+
+Retrieves a message when it will be available and completes the future with received message.
+
+**Example:**
+```java
+consumer.receiveAsync().thenAccept(msg -> {
+    System.out.println("Received: " + new String(msg.getData()));
+    consumer.acknowledgeAsync(msg);
+});
+```
+
+The returned future can be cancelled before completion by calling `.cancel(false)` to remove it from the backlog of receive requests.
+
+### batchReceive()
+
+Batch receiving messages.
+
+```java
+Messages<T> batchReceive() throws PulsarClientException
+```
+
+<ParamField path="Returns" type="Messages<T>">
+  A batch of messages
+</ParamField>
+
+This call blocks until has enough messages or wait timeout, more details to see `BatchReceivePolicy`.
+
+**Example:**
+```java
+Messages<String> messages = consumer.batchReceive();
+for (Message<String> msg : messages) {
+    System.out.println("Received: " + new String(msg.getData()));
+}
+consumer.acknowledge(messages);
+```
+
+### batchReceiveAsync()
+
+Batch receiving messages asynchronously.
+
+```java
+CompletableFuture<Messages<T>> batchReceiveAsync()
+```
+
+<ParamField path="Returns" type="CompletableFuture<Messages<T>>">
+  A future that will be completed with a batch of messages
+</ParamField>
+
+Retrieves messages when has enough messages or wait timeout and completes the future with received messages.
+
+**Example:**
+```java
+consumer.batchReceiveAsync().thenAccept(messages -> {
+    for (Message<String> msg : messages) {
+        System.out.println("Received: " + new String(msg.getData()));
+    }
+    consumer.acknowledgeAsync(messages);
+});
+```
+
+## Acknowledging Messages
+
+<Note>
+Acknowledgment methods are inherited from the `MessageAcknowledger` interface. See the main documentation for `acknowledge()`, `acknowledgeCumulative()`, and their async variants.
+</Note>
+
+### negativeAcknowledge(Message)
+
+Acknowledge the failure to process a single message.
+
+```java
+void negativeAcknowledge(Message<?> message)
+```
+
+<ParamField path="message" type="Message<?>">
+  The Message to be acknowledged
+</ParamField>
+
+When a message is "negatively acked" it will be marked for redelivery after some fixed delay. The delay is configurable when constructing the consumer with `ConsumerBuilder.negativeAckRedeliveryDelay(long, TimeUnit)`.
+
+**Example:**
+```java
+while (true) {
+    Message<String> msg = consumer.receive();
+    try {
+        // Process message...
+        processMessage(msg);
+        consumer.acknowledge(msg);
+    } catch (Throwable t) {
+        log.warn("Failed to process message");
+        consumer.negativeAcknowledge(msg);
+    }
+}
+```
+
+### negativeAcknowledge(MessageId)
+
+Acknowledge the failure to process a single message by MessageId.
+
+```java
+void negativeAcknowledge(MessageId messageId)
+```
+
+<ParamField path="messageId" type="MessageId">
+  The MessageId to be acknowledged
+</ParamField>
+
+This variation allows to pass a `MessageId` rather than a `Message` object, in order to avoid keeping the payload in memory for extended amount of time.
+
+### negativeAcknowledge(Messages)
+
+Acknowledge the failure to process multiple messages.
+
+```java
+void negativeAcknowledge(Messages<?> messages)
+```
+
+<ParamField path="messages" type="Messages<?>">
+  The Messages to be acknowledged
+</ParamField>
+
+**Example:**
+```java
+while (true) {
+    Messages<String> msgs = consumer.batchReceive();
+    try {
+        // Process messages...
+        consumer.acknowledge(msgs);
+    } catch (Throwable t) {
+        log.warn("Failed to process messages");
+        consumer.negativeAcknowledge(msgs);
+    }
+}
+```
+
+## Reconsume Later
+
+### reconsumeLater(Message, delayTime, unit)
+
+Reconsume a message after a custom delay.
+
+```java
+void reconsumeLater(Message<?> message, long delayTime, TimeUnit unit) 
+    throws PulsarClientException
+```
+
+<ParamField path="message" type="Message<?>">
+  The message to be reconsumed later
+</ParamField>
+
+<ParamField path="delayTime" type="long">
+  The amount of delay before the message will be delivered
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  The time unit for the delay
+</ParamField>
+
+**Example:**
+```java
+while (true) {
+    Message<String> msg = consumer.receive();
+    try {
+        // Process message...
+        consumer.acknowledge(msg);
+    } catch (Throwable t) {
+        log.warn("Failed to process message");
+        consumer.reconsumeLater(msg, 1000, TimeUnit.MILLISECONDS);
+    }
+}
+```
+
+### reconsumeLater(Message, customProperties, delayTime, unit)
+
+Reconsume a message with custom properties after a custom delay.
+
+```java
+void reconsumeLater(Message<?> message, Map<String, String> customProperties,
+                    long delayTime, TimeUnit unit) throws PulsarClientException
+```
+
+<ParamField path="message" type="Message<?>">
+  The message to be reconsumed later
+</ParamField>
+
+<ParamField path="customProperties" type="Map<String, String>">
+  The custom properties to be reconsumed later
+</ParamField>
+
+<ParamField path="delayTime" type="long">
+  The amount of delay before the message will be delivered
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  The time unit for the delay
+</ParamField>
+
+### reconsumeLater(Messages, delayTime, unit)
+
+Reconsume multiple messages after a custom delay.
+
+```java
+void reconsumeLater(Messages<?> messages, long delayTime, TimeUnit unit) 
+    throws PulsarClientException
+```
+
+<ParamField path="messages" type="Messages<?>">
+  The messages to be reconsumed later
+</ParamField>
+
+<ParamField path="delayTime" type="long">
+  The amount of delay before the message will be delivered
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  The time unit for the delay
+</ParamField>
+
+### reconsumeLaterCumulative()
+
+Reconsume the reception of all the messages in the stream up to (and including) the provided message.
+
+```java
+void reconsumeLaterCumulative(Message<?> message, long delayTime, TimeUnit unit) 
+    throws PulsarClientException
+```
+
+<ParamField path="message" type="Message<?>">
+  The message to be cumulatively reconsumed
+</ParamField>
+
+<ParamField path="delayTime" type="long">
+  The amount of delay before the message will be delivered
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit">
+  The time unit for the delay
+</ParamField>
+
+### reconsumeLaterAsync()
+
+Asynchronously reconsume a message.
+
+```java
+CompletableFuture<Void> reconsumeLaterAsync(Message<?> message, long delayTime, TimeUnit unit)
+```
+
+<ParamField path="Returns" type="CompletableFuture<Void>">
+  A future that can be used to track the completion of the operation
+</ParamField>
+
+### reconsumeLaterAsync(Message, customProperties, delayTime, unit)
+
+Asynchronously reconsume a message with custom properties.
+
+```java
+CompletableFuture<Void> reconsumeLaterAsync(Message<?> message,
+                                            Map<String, String> customProperties,
+                                            long delayTime, TimeUnit unit)
+```
+
+### reconsumeLaterAsync(Messages, delayTime, unit)
+
+Asynchronously reconsume multiple messages.
+
+```java
+CompletableFuture<Void> reconsumeLaterAsync(Messages<?> messages, long delayTime, TimeUnit unit)
+```
+
+### reconsumeLaterCumulativeAsync()
+
+Asynchronously reconsume cumulatively.
+
+```java
+CompletableFuture<Void> reconsumeLaterCumulativeAsync(Message<?> message, 
+                                                      long delayTime, TimeUnit unit)
+```
+
+### reconsumeLaterCumulativeAsync(Message, customProperties, delayTime, unit)
+
+Asynchronously reconsume cumulatively with custom properties.
+
+```java
+CompletableFuture<Void> reconsumeLaterCumulativeAsync(Message<?> message,
+                                                      Map<String, String> customProperties,
+                                                      long delayTime, TimeUnit unit)
+```
+
+## Subscription Management
+
+### unsubscribe()
+
+Unsubscribe the consumer.
+
+```java
+void unsubscribe() throws PulsarClientException
+```
+
+This call blocks until the consumer is unsubscribed. Unsubscribing will cause the subscription to be deleted and all the data retained can potentially be deleted as well.
+
+The operation will fail when performed on a shared subscription where multiple consumers are currently connected.
+
+### unsubscribe(force)
+
+Unsubscribe the consumer forcefully.
+
+```java
+void unsubscribe(boolean force) throws PulsarClientException
+```
+
+<ParamField path="force" type="boolean">
+  Forcefully unsubscribe by disconnecting connected consumers
+</ParamField>
+
+### unsubscribeAsync()
+
+Asynchronously unsubscribe the consumer.
+
+```java
+CompletableFuture<Void> unsubscribeAsync()
+```
+
+<ParamField path="Returns" type="CompletableFuture<Void>">
+  A future to track the operation
+</ParamField>
+
+### unsubscribeAsync(force)
+
+Asynchronously unsubscribe the consumer forcefully.
+
+```java
+CompletableFuture<Void> unsubscribeAsync(boolean force)
+```
+
+<ParamField path="force" type="boolean">
+  Forcefully unsubscribe by disconnecting connected consumers
+</ParamField>
+
+## Seek Operations
+
+### seek(MessageId)
+
+Reset the subscription associated with this consumer to a specific message id.
+
+```java
+void seek(MessageId messageId) throws PulsarClientException
+```
+
+<ParamField path="messageId" type="MessageId">
+  The message id where to reposition the subscription
+</ParamField>
+
+The message id can either be a specific message or represent the first or last messages in the topic:
+- `MessageId.earliest` - Reset the subscription on the earliest message available in the topic
+- `MessageId.latest` - Reset the subscription on the latest message in the topic
+
+This effectively resets the acknowledgement state of the subscription: all messages up to and including `messageId` will be marked as acknowledged and the rest unacknowledged.
+
+**Example:**
+```java
+// Seek to earliest
+consumer.seek(MessageId.earliest);
+
+// Seek to latest
+consumer.seek(MessageId.latest);
+
+// Seek to specific message
+consumer.seek(specificMessageId);
+```
+
+### seek(timestamp)
+
+Reset the subscription associated with this consumer to a specific message publish time.
+
+```java
+void seek(long timestamp) throws PulsarClientException
+```
+
+<ParamField path="timestamp" type="long">
+  The message publish time where to reposition the subscription (Unix time in milliseconds)
+</ParamField>
+
+**Example:**
+```java
+// Seek to 1 hour ago
+long oneHourAgo = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(1);
+consumer.seek(oneHourAgo);
+```
+
+### seek(Function)
+
+Reset the subscription associated with this consumer to a specific message ID or message publish time.
+
+```java
+void seek(Function<String, Object> function) throws PulsarClientException
+```
+
+<ParamField path="function" type="Function<String, Object>">
+  Function that takes topic+partition and returns timestamp or MessageId
+</ParamField>
+
+The Function input is topic+partition. It returns only timestamp or MessageId. If returns null, the current partition will not do any processing.
+
+### seekAsync(MessageId)
+
+The asynchronous version of `seek(MessageId)`.
+
+```java
+CompletableFuture<Void> seekAsync(MessageId messageId)
+```
+
+### seekAsync(timestamp)
+
+The asynchronous version of `seek(timestamp)`.
+
+```java
+CompletableFuture<Void> seekAsync(long timestamp)
+```
+
+### seekAsync(Function)
+
+The asynchronous version of `seek(Function)`.
+
+```java
+CompletableFuture<Void> seekAsync(Function<String, Object> function)
+```
+
+## Message ID Operations
+
+### getLastMessageId()
+
+Get the last message id available for consume.
+
+```java
+@Deprecated
+MessageId getLastMessageId() throws PulsarClientException
+```
+
+<Note>
+Deprecated: Use `getLastMessageIds()` instead.
+</Note>
+
+### getLastMessageIdAsync()
+
+Get the last message id available for consume asynchronously.
+
+```java
+@Deprecated
+CompletableFuture<MessageId> getLastMessageIdAsync()
+```
+
+<Note>
+Deprecated: Use `getLastMessageIdsAsync()` instead.
+</Note>
+
+### getLastMessageIds()
+
+Get all the last message id of the topics the consumer subscribed.
+
+```java
+List<TopicMessageId> getLastMessageIds() throws PulsarClientException
+```
+
+<ParamField path="Returns" type="List<TopicMessageId>">
+  The list of TopicMessageId instances of all the topics that the consumer subscribed
+</ParamField>
+
+### getLastMessageIdsAsync()
+
+The asynchronous version of `getLastMessageIds()`.
+
+```java
+CompletableFuture<List<TopicMessageId>> getLastMessageIdsAsync()
+```
+
+## Flow Control
+
+### pause()
+
+Stop requesting new messages from the broker until `resume()` is called.
+
+```java
+void pause()
+```
+
+Note that this might cause `receive()` to block until `resume()` is called and new messages are pushed by the broker.
+
+### resume()
+
+Resume requesting messages from the broker.
+
+```java
+void resume()
+```
+
+## Redelivery
+
+### redeliverUnacknowledgedMessages()
+
+Redelivers all the unacknowledged messages.
+
+```java
+void redeliverUnacknowledgedMessages()
+```
+
+In Failover mode, the request is ignored if the consumer is not active for the given topic. In Shared mode, the consumer's messages to be redelivered are distributed across all the connected consumers. This is a non-blocking call and doesn't throw an exception. In case the connection breaks, the messages are redelivered after reconnect.
+
+## Statistics and Status
+
+### getStats()
+
+Get statistics for the consumer.
+
+```java
+ConsumerStats getStats()
+```
+
+<ParamField path="Returns" type="ConsumerStats">
+  Statistics for the consumer
+</ParamField>
+
+**Statistics include:**
+- `numMsgsReceived` - Number of messages received in the current interval
+- `numBytesReceived` - Number of bytes received in the current interval
+- `numReceiveFailed` - Number of messages failed to receive in the current interval
+- `numAcksSent` - Number of acks sent in the current interval
+- `numAcksFailed` - Number of acks failed to send in the current interval
+- `totalMsgsReceived` - Total number of messages received
+- `totalBytesReceived` - Total number of bytes received
+- `totalReceiveFailed` - Total number of messages failed to receive
+- `totalAcksSent` - Total number of acks sent
+- `totalAcksFailed` - Total number of acks failed to send
+
+### isConnected()
+
+Check whether the consumer is currently connected to the broker.
+
+```java
+boolean isConnected()
+```
+
+<ParamField path="Returns" type="boolean">
+  True if connected to the broker, false otherwise
+</ParamField>
+
+### getLastDisconnectedTimestamp()
+
+Get the last disconnected timestamp of the consumer.
+
+```java
+long getLastDisconnectedTimestamp()
+```
+
+<ParamField path="Returns" type="long">
+  The last disconnected timestamp in milliseconds
+</ParamField>
+
+### hasReachedEndOfTopic()
+
+Return true if the topic was terminated and this consumer has already consumed all the messages in the topic.
+
+```java
+boolean hasReachedEndOfTopic()
+```
+
+<ParamField path="Returns" type="boolean">
+  True if end of topic reached, false otherwise
+</ParamField>
+
+Please note that this does not simply mean that the consumer is caught up with the last message published by producers, rather the topic needs to be explicitly "terminated".
+
+## Closing the Consumer
+
+### close()
+
+Close the consumer and stop the broker from pushing more messages.
+
+```java
+void close() throws PulsarClientException
+```
+
+**Example:**
+```java
+try {
+    consumer.close();
+    System.out.println("Consumer closed successfully");
+} catch (PulsarClientException e) {
+    System.err.println("Failed to close consumer: " + e.getMessage());
+}
+```
+
+### closeAsync()
+
+Asynchronously close the consumer and stop the broker from pushing more messages.
+
+```java
+CompletableFuture<Void> closeAsync()
+```
+
+<ParamField path="Returns" type="CompletableFuture<Void>">
+  A future that can be used to track the completion of the operation
+</ParamField>
+
+## Complete Example
+
+```java
+import org.apache.pulsar.client.api.*;
+import java.util.concurrent.TimeUnit;
+
+public class ConsumerExample {
+    public static void main(String[] args) throws Exception {
+        // Create client
+        PulsarClient client = PulsarClient.builder()
+            .serviceUrl("pulsar://localhost:6650")
+            .build();
+
+        // Create consumer
+        Consumer<byte[]> consumer = client.newConsumer()
+            .topic("my-topic")
+            .subscriptionName("my-subscription")
+            .subscribe();
+
+        // Receive messages
+        while (true) {
+            Message<byte[]> msg = consumer.receive();
+            try {
+                System.out.println("Received: " + new String(msg.getData()));
+                // Process the message
+                processMessage(msg);
+                // Acknowledge the message
+                consumer.acknowledge(msg);
+            } catch (Exception e) {
+                // Negative acknowledge on failure
+                consumer.negativeAcknowledge(msg);
+            }
+        }
+    }
+
+    private static void processMessage(Message<?> msg) {
+        // Your processing logic here
+    }
+}
+```

@@ -1,0 +1,263 @@
+---
+title: Standalone Deployment
+description: Deploy Apache Pulsar in standalone mode for development and testing
+---
+
+Standalone mode runs all Pulsar components (broker, BookKeeper, and ZooKeeper) in a single JVM process. This is ideal for local development, testing, and proof-of-concept deployments.
+
+## Prerequisites
+
+- Java 11 or higher
+- At least 4GB of RAM
+- Sufficient disk space for message storage
+
+## Quick Start
+
+<Steps>
+
+<Step title="Download and extract Pulsar">
+
+Download the latest Pulsar release and extract it:
+
+```bash
+wget https://archive.apache.org/dist/pulsar/pulsar-3.x.x/apache-pulsar-3.x.x-bin.tar.gz
+tar xvfz apache-pulsar-3.x.x-bin.tar.gz
+cd apache-pulsar-3.x.x
+```
+
+</Step>
+
+<Step title="Start Pulsar standalone">
+
+Start Pulsar in standalone mode:
+
+```bash
+bin/pulsar standalone
+```
+
+This command starts all Pulsar services in a single process.
+
+</Step>
+
+<Step title="Verify the installation">
+
+In a new terminal, verify that Pulsar is running:
+
+```bash
+bin/pulsar-admin brokers healthcheck
+```
+
+You should see output indicating the broker is healthy.
+
+</Step>
+
+</Steps>
+
+## Configuration
+
+Standalone mode uses the `conf/standalone.conf` configuration file. Key configuration parameters include:
+
+### Cluster Settings
+
+```properties
+# Name of the cluster
+clusterName=standalone
+
+# Metadata store URL (embedded ZooKeeper)
+metadataStoreUrl=
+
+# Broker service ports
+brokerServicePort=6650
+webServicePort=8080
+```
+
+### Storage Settings
+
+```properties
+# Managed ledger settings
+managedLedgerDefaultEnsembleSize=1
+managedLedgerDefaultWriteQuorum=1
+managedLedgerDefaultAckQuorum=1
+
+# BookKeeper client timeout
+bookkeeperClientTimeoutInSeconds=30
+```
+
+### Message Retention
+
+```properties
+# Default retention time (0 = disabled)
+defaultRetentionTimeInMinutes=0
+
+# Default retention size (0 = disabled)
+defaultRetentionSizeInMB=0
+
+# Backlog quota check
+backlogQuotaCheckEnabled=true
+backlogQuotaDefaultLimitGB=10
+```
+
+### Load Balancer
+
+```properties
+# Disable load balancer in standalone
+loadBalancerEnabled=false
+loadManagerClassName=org.apache.pulsar.broker.loadbalance.NoopLoadManager
+```
+
+## Data Storage
+
+By default, standalone mode stores data in the `data/` directory:
+
+- `data/bookkeeper/ledgers` - Message data
+- `data/bookkeeper/journal` - BookKeeper journal
+- `data/zookeeper` - ZooKeeper data
+
+To change the data directory, modify the configuration file before starting.
+
+## Advanced Configuration
+
+### Custom Configuration File
+
+Create a custom configuration file and start standalone with it:
+
+```bash
+bin/pulsar standalone --config /path/to/custom/standalone.conf
+```
+
+### Enable Functions Worker
+
+To enable Pulsar Functions in standalone mode:
+
+```properties
+# Enable Functions Worker
+functionsWorkerEnabled=true
+```
+
+### WebSocket Service
+
+Enable WebSocket API for real-time messaging:
+
+```properties
+# Enable WebSocket service
+webSocketServiceEnabled=true
+webSocketNumIoThreads=8
+```
+
+### Authentication and Authorization
+
+For testing authentication:
+
+```properties
+# Enable authentication
+authenticationEnabled=false
+authenticationProviders=
+
+# Enable authorization
+authorizationEnabled=false
+authorizationProvider=org.apache.pulsar.broker.authorization.PulsarAuthorizationProvider
+```
+
+## Running in Background
+
+To run standalone as a background service:
+
+```bash
+# Start in background
+bin/pulsar-daemon start standalone
+
+# Check status
+bin/pulsar-daemon status standalone
+
+# Stop
+bin/pulsar-daemon stop standalone
+```
+
+## Common Operations
+
+### Create a Tenant and Namespace
+
+```bash
+# Create a tenant
+bin/pulsar-admin tenants create my-tenant
+
+# Create a namespace
+bin/pulsar-admin namespaces create my-tenant/my-namespace
+```
+
+### Produce and Consume Messages
+
+```bash
+# Produce messages
+bin/pulsar-client produce my-topic --messages "Hello Pulsar"
+
+# Consume messages
+bin/pulsar-client consume my-topic --subscription-name my-sub -n 0
+```
+
+### Monitor Topics
+
+```bash
+# List topics
+bin/pulsar-admin topics list public/default
+
+# Get topic stats
+bin/pulsar-admin topics stats persistent://public/default/my-topic
+```
+
+## Limitations
+
+<Warning>
+Standalone mode is **not recommended for production** use. It has the following limitations:
+
+- No high availability (single point of failure)
+- Limited scalability
+- All components share the same JVM
+- Data is stored locally with no replication
+- No horizontal scaling capabilities
+</Warning>
+
+## Migration to Cluster Mode
+
+When ready to move to production, migrate to a full cluster deployment:
+
+1. Export your configuration and schemas
+2. Set up a proper cluster with separate ZooKeeper, BookKeeper, and broker nodes
+3. Restore your tenants, namespaces, and schemas
+4. Migrate your applications to the new cluster
+
+See [Cluster Deployment](/deployment/cluster) for full cluster setup instructions.
+
+## Troubleshooting
+
+### Port Already in Use
+
+If ports 6650 or 8080 are already in use:
+
+```properties
+brokerServicePort=6651
+webServicePort=8081
+```
+
+### Out of Memory
+
+Increase JVM heap size by setting the `PULSAR_MEM` environment variable:
+
+```bash
+export PULSAR_MEM="-Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g"
+bin/pulsar standalone
+```
+
+### Log Files
+
+Check logs in the `logs/` directory:
+
+```bash
+tail -f logs/pulsar-standalone-*.log
+```
+
+## Next Steps
+
+- Learn about [Cluster Deployment](/deployment/cluster) for production setups
+- Explore [Docker Deployment](/deployment/docker) for containerized environments
+- Read about [Kubernetes Deployment](/deployment/kubernetes) for cloud-native deployments

@@ -1,0 +1,507 @@
+---
+title: "Clusters API"
+description: "REST API endpoints for managing Pulsar clusters, their configurations, and policies"
+---
+
+## Overview
+
+Clusters represent physical Pulsar deployments in different data centers or regions. The Clusters API allows you to create, configure, and manage cluster settings including service URLs, replication, and namespace isolation policies.
+
+**Base Path**: `/admin/v2/clusters`
+
+## List Clusters
+
+Get the list of all Pulsar clusters.
+
+```http
+GET /admin/v2/clusters
+```
+
+### Response
+
+<ResponseField name="clusters" type="array">
+  Set of cluster names (excludes the "global" cluster)
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/clusters \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+List<String> clusters = admin.clusters().getClusters();
+```
+
+```python Python
+clusters = admin.clusters().get_clusters()
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+[
+  "us-west",
+  "us-east",
+  "eu-central"
+]
+```
+
+## Get Cluster Configuration
+
+Retrieve the configuration for a specific cluster.
+
+```http
+GET /admin/v2/clusters/{cluster}
+```
+
+### Path Parameters
+
+<ParamField path="cluster" type="string" required>
+  The cluster name
+</ParamField>
+
+### Response
+
+<ResponseField name="serviceUrl" type="string">
+  HTTP service URL for the broker
+</ResponseField>
+
+<ResponseField name="serviceUrlTls" type="string">
+  HTTPS service URL for the broker
+</ResponseField>
+
+<ResponseField name="brokerServiceUrl" type="string">
+  Pulsar protocol URL for the broker
+</ResponseField>
+
+<ResponseField name="brokerServiceUrlTls" type="string">
+  Pulsar protocol URL with TLS
+</ResponseField>
+
+<ResponseField name="peerClusterNames" type="array">
+  List of peer cluster names for replication
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/clusters/us-west \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+ClusterData cluster = admin.clusters().getCluster("us-west");
+```
+
+```python Python
+cluster = admin.clusters().get_cluster("us-west")
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+{
+  "serviceUrl": "http://pulsar-us-west.example.com:8080",
+  "serviceUrlTls": "https://pulsar-us-west.example.com:8443",
+  "brokerServiceUrl": "pulsar://pulsar-us-west.example.com:6650",
+  "brokerServiceUrlTls": "pulsar+ssl://pulsar-us-west.example.com:6651",
+  "peerClusterNames": ["us-east", "eu-central"]
+}
+```
+
+## Create Cluster
+
+Create a new cluster with the specified configuration.
+
+```http
+PUT /admin/v2/clusters/{cluster}
+```
+
+### Path Parameters
+
+<ParamField path="cluster" type="string" required>
+  The cluster name to create. Cannot contain '/' characters.
+</ParamField>
+
+### Request Body
+
+<ParamField body="serviceUrl" type="string" required>
+  HTTP service URL (e.g., http://broker.example.com:8080)
+</ParamField>
+
+<ParamField body="serviceUrlTls" type="string">
+  HTTPS service URL (e.g., https://broker.example.com:8443)
+</ParamField>
+
+<ParamField body="brokerServiceUrl" type="string" required>
+  Binary protocol URL (e.g., pulsar://broker.example.com:6650)
+</ParamField>
+
+<ParamField body="brokerServiceUrlTls" type="string">
+  Binary protocol URL with TLS (e.g., pulsar+ssl://broker.example.com:6651)
+</ParamField>
+
+<ParamField body="peerClusterNames" type="array">
+  List of peer clusters for replication
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X PUT http://localhost:8080/admin/v2/clusters/us-west \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "serviceUrl": "http://pulsar-us-west.example.com:8080",
+    "serviceUrlTls": "https://pulsar-us-west.example.com:8443",
+    "brokerServiceUrl": "pulsar://pulsar-us-west.example.com:6650",
+    "brokerServiceUrlTls": "pulsar+ssl://pulsar-us-west.example.com:6651"
+  }'
+```
+
+```java Java
+ClusterData clusterData = ClusterData.builder()
+    .serviceUrl("http://pulsar-us-west.example.com:8080")
+    .serviceUrlTls("https://pulsar-us-west.example.com:8443")
+    .brokerServiceUrl("pulsar://pulsar-us-west.example.com:6650")
+    .brokerServiceUrlTls("pulsar+ssl://pulsar-us-west.example.com:6651")
+    .build();
+
+admin.clusters().createCluster("us-west", clusterData);
+```
+
+```python Python
+from pulsar.admin import ClusterData
+
+cluster_data = ClusterData(
+    service_url="http://pulsar-us-west.example.com:8080",
+    service_url_tls="https://pulsar-us-west.example.com:8443",
+    broker_service_url="pulsar://pulsar-us-west.example.com:6650",
+    broker_service_url_tls="pulsar+ssl://pulsar-us-west.example.com:6651"
+)
+
+admin.clusters().create_cluster("us-west", cluster_data)
+```
+</CodeGroup>
+
+### Response Codes
+
+| Code | Description |
+|------|-------------|
+| 200 | Cluster created successfully |
+| 400 | Bad request (invalid URL format) |
+| 403 | Don't have super-user privileges |
+| 409 | Cluster already exists |
+| 412 | Cluster name is not valid |
+| 500 | Internal server error |
+
+## Update Cluster
+
+Update an existing cluster's configuration.
+
+```http
+POST /admin/v2/clusters/{cluster}
+```
+
+### Path Parameters
+
+<ParamField path="cluster" type="string" required>
+  The cluster name to update
+</ParamField>
+
+### Request Body
+
+<ParamField body="serviceUrl" type="string" required>
+  HTTP service URL
+</ParamField>
+
+<ParamField body="serviceUrlTls" type="string">
+  HTTPS service URL
+</ParamField>
+
+<ParamField body="brokerServiceUrl" type="string" required>
+  Binary protocol URL
+</ParamField>
+
+<ParamField body="brokerServiceUrlTls" type="string">
+  Binary protocol URL with TLS
+</ParamField>
+
+<ParamField body="peerClusterNames" type="array">
+  Updated list of peer clusters
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/clusters/us-west \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "serviceUrl": "http://new-broker.example.com:8080",
+    "brokerServiceUrl": "pulsar://new-broker.example.com:6650",
+    "peerClusterNames": ["us-east", "eu-central", "ap-south"]
+  }'
+```
+
+```java Java
+ClusterData updatedData = ClusterData.builder()
+    .serviceUrl("http://new-broker.example.com:8080")
+    .brokerServiceUrl("pulsar://new-broker.example.com:6650")
+    .peerClusterNames(List.of("us-east", "eu-central", "ap-south"))
+    .build();
+
+admin.clusters().updateCluster("us-west", updatedData);
+```
+</CodeGroup>
+
+### Response Codes
+
+| Code | Description |
+|------|-------------|
+| 204 | Cluster updated successfully |
+| 403 | Don't have super-user privileges |
+| 404 | Cluster doesn't exist |
+| 412 | Invalid configuration |
+
+## Delete Cluster
+
+Delete a cluster.
+
+```http
+DELETE /admin/v2/clusters/{cluster}
+```
+
+### Path Parameters
+
+<ParamField path="cluster" type="string" required>
+  The cluster name to delete
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:8080/admin/v2/clusters/us-west \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+admin.clusters().deleteCluster("us-west");
+```
+
+```python Python
+admin.clusters().delete_cluster("us-west")
+```
+</CodeGroup>
+
+### Response Codes
+
+| Code | Description |
+|------|-------------|
+| 204 | Cluster deleted successfully |
+| 403 | Don't have super-user privileges |
+| 404 | Cluster doesn't exist |
+| 412 | Cluster has active tenants |
+
+<Warning>
+  You cannot delete a cluster if tenants are still using it. Remove the cluster from all tenant configurations first.
+</Warning>
+
+## Namespace Isolation Policies
+
+Namespace isolation policies allow you to dedicate specific brokers to certain namespaces.
+
+### Create Namespace Isolation Policy
+
+```http
+POST /admin/v2/clusters/{cluster}/namespaceIsolationPolicies/{policyName}
+```
+
+#### Path Parameters
+
+<ParamField path="cluster" type="string" required>
+  The cluster name
+</ParamField>
+
+<ParamField path="policyName" type="string" required>
+  Name for the isolation policy
+</ParamField>
+
+#### Request Body
+
+<ParamField body="namespaces" type="array" required>
+  List of namespace patterns (regex supported)
+</ParamField>
+
+<ParamField body="primary" type="array" required>
+  Primary broker patterns
+</ParamField>
+
+<ParamField body="secondary" type="array">
+  Secondary broker patterns
+</ParamField>
+
+<ParamField body="auto_failover_policy" type="object" required>
+  Auto-failover configuration
+</ParamField>
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/clusters/us-west/namespaceIsolationPolicies/policy1 \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "namespaces": ["my-tenant/critical-.*"],
+    "primary": ["broker-[0-3].*"],
+    "secondary": ["broker-[4-7].*"],
+    "auto_failover_policy": {
+      "policy_type": "min_available",
+      "parameters": {
+        "min_limit": 2,
+        "usage_threshold": 80
+      }
+    }
+  }'
+```
+
+```java Java
+NamespaceIsolationData isolationData = NamespaceIsolationData.builder()
+    .namespaces(List.of("my-tenant/critical-.*"))
+    .primary(List.of("broker-[0-3].*"))
+    .secondary(List.of("broker-[4-7].*"))
+    .autoFailoverPolicy(AutoFailoverPolicyData.builder()
+        .policyType(AutoFailoverPolicyType.min_available)
+        .parameters(Map.of(
+            "min_limit", "2",
+            "usage_threshold", "80"
+        ))
+        .build())
+    .build();
+
+admin.clusters().createNamespaceIsolationPolicy(
+    "us-west",
+    "policy1",
+    isolationData
+);
+```
+</CodeGroup>
+
+### Get Namespace Isolation Policies
+
+```http
+GET /admin/v2/clusters/{cluster}/namespaceIsolationPolicies
+```
+
+### Delete Namespace Isolation Policy
+
+```http
+DELETE /admin/v2/clusters/{cluster}/namespaceIsolationPolicies/{policyName}
+```
+
+## Failure Domains
+
+Failure domains group brokers for rack-aware placement.
+
+### Create Failure Domain
+
+```http
+POST /admin/v2/clusters/{cluster}/failureDomains/{domainName}
+```
+
+#### Request Body
+
+<ParamField body="brokers" type="array" required>
+  List of broker names in this domain
+</ParamField>
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/clusters/us-west/failureDomains/rack1 \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "brokers": [
+      "broker-1.us-west.example.com",
+      "broker-2.us-west.example.com"
+    ]
+  }'
+```
+
+```java Java
+FailureDomain domain = FailureDomain.builder()
+    .brokers(Set.of(
+        "broker-1.us-west.example.com",
+        "broker-2.us-west.example.com"
+    ))
+    .build();
+
+admin.clusters().createFailureDomain("us-west", "rack1", domain);
+```
+</CodeGroup>
+
+### Get Failure Domains
+
+```http
+GET /admin/v2/clusters/{cluster}/failureDomains
+```
+
+### Delete Failure Domain
+
+```http
+DELETE /admin/v2/clusters/{cluster}/failureDomains/{domainName}
+```
+
+## Best Practices
+
+### Cluster Setup
+
+- Use descriptive cluster names (e.g., region-based)
+- Configure both HTTP and binary protocol URLs
+- Always set up TLS URLs for production
+- Document cluster locations and purposes
+
+### Multi-Region Deployment
+
+- Create separate clusters for each region
+- Configure peer clusters for geo-replication
+- Use failure domains for rack awareness
+- Monitor cross-cluster latency
+
+### Namespace Isolation
+
+- Isolate critical workloads on dedicated brokers
+- Use regex patterns for flexible namespace matching
+- Configure appropriate failover policies
+- Monitor broker utilization
+
+### High Availability
+
+- Deploy multiple brokers per cluster
+- Configure failure domains across racks/zones
+- Set up automatic failover policies
+- Test disaster recovery procedures
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Tenants API" icon="users" href="/admin-api/tenants">
+    Assign tenants to clusters
+  </Card>
+  
+  <Card title="Brokers API" icon="network-wired" href="/admin-api/brokers">
+    Monitor and manage broker nodes
+  </Card>
+</CardGroup>

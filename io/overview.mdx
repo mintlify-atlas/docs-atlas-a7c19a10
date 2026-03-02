@@ -1,0 +1,150 @@
+---
+title: Pulsar IO Overview
+description: Learn about Pulsar IO connectors for integrating external systems with Apache Pulsar
+---
+
+## What is Pulsar IO?
+
+Pulsar IO is a framework for building connectors that move data between Apache Pulsar and external systems. It provides a simple interface for integrating Pulsar with databases, messaging systems, and other data sources and sinks.
+
+## Connector Types
+
+Pulsar IO supports two types of connectors:
+
+### Source Connectors
+
+Source connectors read data from external systems and write it to Pulsar topics. They implement the `Source` interface and continuously pull or receive data from external systems.
+
+**Key characteristics:**
+- Implement `org.apache.pulsar.io.core.Source<T>` interface
+- Read data from external systems
+- Push messages into Pulsar topics
+- Support configurable polling and batching
+
+### Sink Connectors
+
+Sink connectors read data from Pulsar topics and write it to external systems. They implement the `Sink` interface and process messages as they arrive.
+
+**Key characteristics:**
+- Implement `org.apache.pulsar.io.core.Sink<T>` interface
+- Read messages from Pulsar topics
+- Write data to external systems
+- Support delivery guarantees and error handling
+
+## Core Concepts
+
+### Connector Lifecycle
+
+1. **Open**: Initialize the connector with configuration
+2. **Process**: Read or write data (depending on connector type)
+3. **Close**: Clean up resources when shutting down
+
+### Configuration
+
+Connectors are configured using YAML files or configuration maps. Each connector has a specific configuration class that defines required and optional parameters.
+
+```yaml
+tenant: public
+namespace: default
+name: my-connector
+inputs: [input-topic]
+archive: connectors/my-connector.nar
+configs:
+  # connector-specific configuration
+```
+
+### Runtime Modes
+
+Pulsar IO connectors can run in different modes:
+
+- **Standalone**: Run as part of the Pulsar Functions runtime
+- **Cluster**: Deploy across multiple Pulsar brokers for high availability
+- **Kubernetes**: Run as containerized workloads
+
+## Architecture
+
+### Source Connector Flow
+
+```
+External System → Source Connector → Pulsar Topic → Consumer Applications
+```
+
+### Sink Connector Flow
+
+```
+Producer Applications → Pulsar Topic → Sink Connector → External System
+```
+
+## Key Features
+
+### Built-in Connectors
+
+Pulsar includes a rich set of built-in connectors for popular systems. See the [Connectors](/io/connectors) page for a complete list.
+
+### Processing Guarantees
+
+- **At-most-once**: Messages may be lost but never redelivered
+- **At-least-once**: Messages are never lost but may be redelivered
+- **Effectively-once**: Each message is processed exactly once
+
+### Schema Support
+
+Connectors support Pulsar's schema registry, allowing automatic schema evolution and type safety.
+
+### Error Handling
+
+Built-in support for:
+- Dead letter queues for failed messages
+- Retry policies with exponential backoff
+- Custom error handlers
+
+### Monitoring
+
+Connectors expose metrics for:
+- Message throughput
+- Processing latency
+- Error rates
+- Connection health
+
+## Managing Connectors
+
+### Using pulsar-admin CLI
+
+```bash
+# Create a source connector
+pulsar-admin sources create \
+  --source-config-file kafka-source-config.yaml
+
+# Create a sink connector
+pulsar-admin sinks create \
+  --sink-config-file cassandra-sink-config.yaml
+
+# List running connectors
+pulsar-admin sources list
+pulsar-admin sinks list
+
+# Get connector status
+pulsar-admin sources status --name my-source
+
+# Stop a connector
+pulsar-admin sources stop --name my-source
+
+# Delete a connector
+pulsar-admin sources delete --name my-source
+```
+
+## When to Use Pulsar IO
+
+Pulsar IO is ideal when you need to:
+
+- Ingest data from external systems into Pulsar
+- Export Pulsar data to external systems
+- Bridge between Pulsar and legacy systems
+- Implement change data capture (CDC) pipelines
+- Build data integration workflows
+
+## Next Steps
+
+- Explore [available connectors](/io/connectors)
+- Learn about [developing custom connectors](/io/developing-connectors)
+- Review connector-specific configuration guides

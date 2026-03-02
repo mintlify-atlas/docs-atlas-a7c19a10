@@ -1,0 +1,360 @@
+---
+title: "Tenants API"
+description: "REST API endpoints for managing Pulsar tenants and their configurations"
+---
+
+## Overview
+
+Tenants are the top-level administrative units in Pulsar. Each tenant can have multiple namespaces and represents an organization or team. The Tenants API allows you to create, configure, and manage tenants.
+
+**Base Path**: `/admin/v2/tenants`
+
+## List Tenants
+
+Get the list of all existing tenants in the cluster.
+
+```http
+GET /admin/v2/tenants
+```
+
+### Response
+
+<ResponseField name="tenants" type="array">
+  List of tenant names
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/tenants \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+List<String> tenants = admin.tenants().getTenants();
+```
+
+```python Python
+tenants = admin.tenants().get_tenants()
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+[
+  "public",
+  "sample",
+  "my-tenant"
+]
+```
+
+## Get Tenant Info
+
+Retrieve the configuration for a specific tenant.
+
+```http
+GET /admin/v2/tenants/{tenant}
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+### Response
+
+<ResponseField name="adminRoles" type="array">
+  List of admin roles for this tenant
+</ResponseField>
+
+<ResponseField name="allowedClusters" type="array">
+  List of clusters this tenant is allowed to use
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/tenants/my-tenant \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+TenantInfo info = admin.tenants().getTenantInfo("my-tenant");
+```
+
+```python Python
+info = admin.tenants().get_tenant_info("my-tenant")
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+{
+  "adminRoles": ["admin", "ops-team"],
+  "allowedClusters": ["us-west", "us-east"]
+}
+```
+
+## Create Tenant
+
+Create a new tenant with the specified configuration.
+
+```http
+PUT /admin/v2/tenants/{tenant}
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name to create. Must be a valid identifier without '/' characters.
+</ParamField>
+
+### Request Body
+
+<ParamField body="adminRoles" type="array">
+  List of roles that have admin access to this tenant
+</ParamField>
+
+<ParamField body="allowedClusters" type="array" required>
+  List of clusters this tenant can use. Cannot be empty.
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X PUT http://localhost:8080/admin/v2/tenants/my-tenant \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "adminRoles": ["admin", "ops-team"],
+    "allowedClusters": ["us-west", "us-east"]
+  }'
+```
+
+```java Java
+TenantInfo tenantInfo = TenantInfo.builder()
+    .adminRoles(Set.of("admin", "ops-team"))
+    .allowedClusters(Set.of("us-west", "us-east"))
+    .build();
+
+admin.tenants().createTenant("my-tenant", tenantInfo);
+```
+
+```python Python
+from pulsar.admin import TenantInfo
+
+tenant_info = TenantInfo(
+    admin_roles=["admin", "ops-team"],
+    allowed_clusters=["us-west", "us-east"]
+)
+
+admin.tenants().create_tenant("my-tenant", tenant_info)
+```
+</CodeGroup>
+
+### Response Codes
+
+| Code | Description |
+|------|-------------|
+| 204 | Tenant created successfully |
+| 403 | Don't have admin permissions |
+| 409 | Tenant already exists |
+| 412 | Invalid tenant name or clusters don't exist |
+
+## Update Tenant
+
+Update the configuration of an existing tenant.
+
+```http
+POST /admin/v2/tenants/{tenant}
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name to update
+</ParamField>
+
+### Request Body
+
+<ParamField body="adminRoles" type="array">
+  Updated list of admin roles
+</ParamField>
+
+<ParamField body="allowedClusters" type="array" required>
+  Updated list of allowed clusters
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/tenants/my-tenant \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "adminRoles": ["admin", "ops-team", "new-admin"],
+    "allowedClusters": ["us-west", "us-east", "eu-central"]
+  }'
+```
+
+```java Java
+TenantInfo updatedInfo = TenantInfo.builder()
+    .adminRoles(Set.of("admin", "ops-team", "new-admin"))
+    .allowedClusters(Set.of("us-west", "us-east", "eu-central"))
+    .build();
+
+admin.tenants().updateTenant("my-tenant", updatedInfo);
+```
+
+```python Python
+updated_info = TenantInfo(
+    admin_roles=["admin", "ops-team", "new-admin"],
+    allowed_clusters=["us-west", "us-east", "eu-central"]
+)
+
+admin.tenants().update_tenant("my-tenant", updated_info)
+```
+</CodeGroup>
+
+### Response Codes
+
+| Code | Description |
+|------|-------------|
+| 204 | Tenant updated successfully |
+| 403 | Don't have admin permissions |
+| 404 | Tenant doesn't exist |
+| 412 | Invalid configuration or clusters don't exist |
+
+## Delete Tenant
+
+Delete a tenant and all its namespaces and topics.
+
+```http
+DELETE /admin/v2/tenants/{tenant}
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name to delete
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="force" type="boolean" default="false">
+  Force delete even if namespaces exist
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:8080/admin/v2/tenants/my-tenant \
+  -H "Authorization: Bearer <token>"
+```
+
+```bash cURL (Force Delete)
+curl -X DELETE "http://localhost:8080/admin/v2/tenants/my-tenant?force=true" \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+admin.tenants().deleteTenant("my-tenant");
+
+// Force delete
+admin.tenants().deleteTenant("my-tenant", true);
+```
+
+```python Python
+admin.tenants().delete_tenant("my-tenant")
+
+# Force delete
+admin.tenants().delete_tenant("my-tenant", force=True)
+```
+</CodeGroup>
+
+### Response Codes
+
+| Code | Description |
+|------|-------------|
+| 204 | Tenant deleted successfully |
+| 403 | Don't have admin permissions |
+| 404 | Tenant doesn't exist |
+| 409 | Tenant has active namespaces (use force=true) |
+
+## Error Handling
+
+### Common Errors
+
+<AccordionGroup>
+  <Accordion title="403 - Permission Denied">
+    You don't have super-user or tenant admin privileges.
+    
+    **Solution**: Ensure you're authenticated with proper credentials.
+  </Accordion>
+  
+  <Accordion title="409 - Tenant Already Exists">
+    A tenant with this name already exists.
+    
+    **Solution**: Choose a different name or update the existing tenant.
+  </Accordion>
+  
+  <Accordion title="412 - Invalid Tenant Name">
+    The tenant name contains invalid characters.
+    
+    **Solution**: Use only alphanumeric characters, hyphens, and underscores.
+  </Accordion>
+  
+  <Accordion title="412 - Clusters Don't Exist">
+    One or more specified clusters don't exist.
+    
+    **Solution**: Verify cluster names and create missing clusters first.
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+### Naming Conventions
+
+- Use lowercase names for consistency
+- Avoid special characters except hyphens and underscores
+- Use descriptive names that reflect the organization or team
+
+### Cluster Assignment
+
+- Assign tenants to appropriate clusters based on geographic location
+- Consider data residency and compliance requirements
+- Plan for multi-region deployments
+
+### Role Management
+
+- Use the principle of least privilege
+- Create specific roles for different administrative levels
+- Regularly review and update admin roles
+
+### Tenant Lifecycle
+
+1. **Create**: Define tenant with appropriate clusters
+2. **Configure**: Set up namespaces and policies
+3. **Monitor**: Track usage and performance
+4. **Update**: Adjust configuration as needs change
+5. **Delete**: Clean up when no longer needed
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Namespaces API" icon="folder" href="/admin-api/namespaces">
+    Manage namespaces within tenants
+  </Card>
+  
+  <Card title="Clusters API" icon="server" href="/admin-api/clusters">
+    Configure cluster settings
+  </Card>
+</CardGroup>

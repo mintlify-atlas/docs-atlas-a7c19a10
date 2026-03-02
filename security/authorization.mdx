@@ -1,0 +1,538 @@
+---
+title: Authorization
+description: Configure role-based access control and permissions in Apache Pulsar
+---
+
+Authorization in Apache Pulsar controls what authenticated users can do with cluster resources. After authentication verifies identity, authorization enforces access policies on tenants, namespaces, topics, and administrative operations.
+
+## Enabling Authorization
+
+Authorization must be enabled in the broker configuration:
+
+```properties
+# Enable authentication (required for authorization)
+authenticationEnabled=true
+
+# Enable authorization
+authorizationEnabled=true
+
+# Authorization provider class
+authorizationProvider=org.apache.pulsar.broker.authorization.PulsarAuthorizationProvider
+
+# Allow wildcard matching in authorization rules
+authorizationAllowWildcardsMatching=false
+```
+
+<Warning>
+Authorization requires authentication to be enabled. You must configure an authentication provider before enabling authorization.
+</Warning>
+
+## Super Users
+
+Super users have unrestricted access to all cluster resources and administrative operations.
+
+```properties
+# Comma-separated list of super user roles
+superUserRoles=admin,superuser,pulsar-admin
+```
+
+**Super users can:**
+- Create and delete tenants, namespaces, and topics
+- Grant and revoke permissions
+- Access all topics for produce and consume operations
+- Perform all administrative operations
+- Bypass all authorization checks
+
+<Warning>
+Limit super user roles to essential administrators only. Each super user role has complete control over the cluster, including the ability to delete data and modify security settings.
+</Warning>
+
+## Resource Hierarchy
+
+Pulsar organizes resources in a hierarchical structure:
+
+```
+Cluster
+  └─ Tenant
+      └─ Namespace
+          └─ Topic
+```
+
+Permissions can be granted at the namespace or topic level. Namespace permissions apply to all topics within that namespace unless overridden by topic-level permissions.
+
+## Permission Types
+
+Pulsar defines several permission types:
+
+| Permission | Description |
+|------------|-------------|
+| `produce` | Publish messages to topics |
+| `consume` | Subscribe to and consume messages |
+| `functions` | Create and manage Pulsar Functions |
+| `sources` | Create and manage Pulsar IO sources |
+| `sinks` | Create and manage Pulsar IO sinks |
+| `packages` | Upload and download packages |
+
+## Granting Permissions
+
+### Namespace Permissions
+
+Grant permissions to a role for all topics in a namespace:
+
+```bash
+# Grant produce permission
+bin/pulsar-admin namespaces grant-permission \
+    my-tenant/my-namespace \
+    --role my-app-role \
+    --actions produce
+
+# Grant multiple permissions
+bin/pulsar-admin namespaces grant-permission \
+    my-tenant/my-namespace \
+    --role my-consumer-role \
+    --actions produce,consume
+
+# Grant all permissions
+bin/pulsar-admin namespaces grant-permission \
+    my-tenant/my-namespace \
+    --role my-admin-role \
+    --actions produce,consume,functions,sources,sinks
+```
+
+### Topic Permissions
+
+Grant permissions to a role for a specific topic:
+
+```bash
+# Grant produce permission on a topic
+bin/pulsar-admin topics grant-permission \
+    persistent://my-tenant/my-namespace/my-topic \
+    --role my-producer-role \
+    --actions produce
+
+# Grant consume permission
+bin/pulsar-admin topics grant-permission \
+    persistent://my-tenant/my-namespace/my-topic \
+    --role my-consumer-role \
+    --actions consume
+```
+
+### Subscription Permissions
+
+Control which roles can create subscriptions:
+
+```bash
+# Grant subscription permission
+bin/pulsar-admin namespaces grant-subscription-permission \
+    my-tenant/my-namespace \
+    --role my-consumer-role \
+    --subscription my-subscription
+```
+
+## Revoking Permissions
+
+### Revoke Namespace Permissions
+
+```bash
+bin/pulsar-admin namespaces revoke-permission \
+    my-tenant/my-namespace \
+    --role my-app-role
+```
+
+### Revoke Topic Permissions
+
+```bash
+bin/pulsar-admin topics revoke-permission \
+    persistent://my-tenant/my-namespace/my-topic \
+    --role my-producer-role
+```
+
+### Revoke Subscription Permissions
+
+```bash
+bin/pulsar-admin namespaces revoke-subscription-permission \
+    my-tenant/my-namespace \
+    --role my-consumer-role \
+    --subscription my-subscription
+```
+
+## Viewing Permissions
+
+### List Namespace Permissions
+
+```bash
+bin/pulsar-admin namespaces permissions my-tenant/my-namespace
+```
+
+Output:
+```json
+{
+  "my-producer-role": ["produce"],
+  "my-consumer-role": ["consume"],
+  "my-admin-role": ["produce", "consume", "functions"]
+}
+```
+
+### List Topic Permissions
+
+```bash
+bin/pulsar-admin topics permissions \
+    persistent://my-tenant/my-namespace/my-topic
+```
+
+## Wildcard Matching
+
+When enabled, wildcard matching allows flexible permission rules:
+
+```properties
+# Enable wildcard matching
+authorizationAllowWildcardsMatching=true
+```
+
+**Supported patterns:**
+
+```bash
+# Match all apps with prefix
+bin/pulsar-admin namespaces grant-permission \
+    my-tenant/my-namespace \
+    --role "app-*" \
+    --actions produce
+
+# Match all apps with suffix
+bin/pulsar-admin namespaces grant-permission \
+    my-tenant/my-namespace \
+    --role "*.pulsar.service" \
+    --actions consume
+```
+
+<Warning>
+Wildcard matching only works when the wildcard character (*) appears at the first or last position. Patterns like `app-*-service` are not supported.
+</Warning>
+
+## Multi-Role Authorization
+
+Pulsar supports authorization with multiple roles per request. This is useful when a client authenticates with multiple credentials.
+
+```properties
+# Use multi-role authorization provider
+authorizationProvider=org.apache.pulsar.broker.authorization.MultiRolesTokenAuthorizationProvider
+```
+
+With multi-role authorization, access is granted if **any** of the client's roles has the required permission.
+
+## Tenant Administration
+
+Tenant admins can manage namespaces within their tenant:
+
+```bash
+# Create tenant with admin roles
+bin/pulsar-admin tenants create my-tenant \
+    --admin-roles tenant-admin-role
+
+# Update tenant admin roles
+bin/pulsar-admin tenants update my-tenant \
+    --admin-roles tenant-admin-role,another-admin-role
+
+# List tenant admins
+bin/pulsar-admin tenants get my-tenant
+```
+
+Tenant admin roles can:
+- Create and delete namespaces within the tenant
+- Configure namespace policies
+- Grant and revoke namespace permissions
+- View tenant statistics
+
+## Proxy Authorization
+
+When using Pulsar proxy, configure authorization to handle forwarded credentials:
+
+### Proxy Configuration
+
+```properties
+# Enable authorization on proxy
+authorizationEnabled=true
+
+# Proxy roles allowed to forward auth data
+proxyRoles=proxy
+```
+
+### Broker Configuration
+
+```properties
+# Authenticate original auth data from proxy
+authenticateOriginalAuthData=true
+
+# Proxy roles
+proxyRoles=proxy
+```
+
+The broker will authorize the **original client role**, not the proxy role.
+
+## Function Authorization
+
+Pulsar Functions require additional permissions:
+
+```bash
+# Grant function permissions
+bin/pulsar-admin namespaces grant-permission \
+    my-tenant/my-namespace \
+    --role my-function-role \
+    --actions functions,produce,consume
+```
+
+Functions need:
+- `functions` permission to create and manage the function
+- `produce` permission to write to output topics
+- `consume` permission to read from input topics
+
+## Authorization Policies
+
+### Namespace-Level Policies
+
+Namespace policies affect all topics in the namespace:
+
+```bash
+# Set namespace permissions
+bin/pulsar-admin namespaces set-clusters \
+    my-tenant/my-namespace \
+    --clusters us-west,us-east
+
+# Set replication clusters (requires superuser)
+bin/pulsar-admin namespaces set-replication-clusters \
+    my-tenant/my-namespace \
+    --clusters us-west,us-east
+```
+
+### Topic-Level Policies
+
+Topic-level permissions override namespace permissions:
+
+```bash
+# Enable topic-level policies
+bin/pulsar-admin namespaces set-is-allow-auto-update-schema \
+    my-tenant/my-namespace \
+    --enable
+```
+
+## Authorization Provider API
+
+Custom authorization providers can be implemented:
+
+```java
+public interface AuthorizationProvider extends Closeable {
+    // Initialize the provider
+    void initialize(ServiceConfiguration conf, 
+                    ConfigurationCacheService cache) throws IOException;
+
+    // Check if role is a super user
+    CompletableFuture<Boolean> isSuperUser(String role,
+                                           ServiceConfiguration config);
+
+    // Check if role can perform operation on resource
+    CompletableFuture<Boolean> canProduceAsync(TopicName topicName,
+                                               String role,
+                                               AuthenticationDataSource authData);
+
+    CompletableFuture<Boolean> canConsumeAsync(TopicName topicName,
+                                               String role,
+                                               AuthenticationDataSource authData,
+                                               String subscription);
+
+    CompletableFuture<Boolean> canLookupAsync(TopicName topicName,
+                                              String role,
+                                              AuthenticationDataSource authData);
+}
+```
+
+### Custom Authorization Provider
+
+```java
+public class CustomAuthorizationProvider implements AuthorizationProvider {
+    @Override
+    public void initialize(ServiceConfiguration conf,
+                          ConfigurationCacheService cache) {
+        // Initialize external policy store
+    }
+
+    @Override
+    public CompletableFuture<Boolean> isSuperUser(String role,
+                                                   ServiceConfiguration config) {
+        Set<String> superUsers = config.getSuperUserRoles();
+        return CompletableFuture.completedFuture(
+            role != null && superUsers.contains(role)
+        );
+    }
+
+    @Override
+    public CompletableFuture<Boolean> canProduceAsync(TopicName topic,
+                                                       String role,
+                                                       AuthenticationDataSource authData) {
+        // Check external policy system
+        return checkPolicyStore(role, topic, "produce");
+    }
+}
+```
+
+Configure the custom provider:
+
+```properties
+authorizationProvider=com.example.CustomAuthorizationProvider
+```
+
+## Authorization Metrics
+
+Monitor authorization with these metrics:
+
+```
+pulsar_authorization_success_count{resource="<namespace>",operation="<action>"}
+pulsar_authorization_failures_count{resource="<namespace>",operation="<action>"}
+```
+
+These metrics track successful and failed authorization attempts per resource.
+
+## Common Patterns
+
+### Pattern 1: Per-Application Isolation
+
+```bash
+# Create namespace per application
+bin/pulsar-admin namespaces create my-tenant/app1-namespace
+bin/pulsar-admin namespaces create my-tenant/app2-namespace
+
+# Grant app1 access only to its namespace
+bin/pulsar-admin namespaces grant-permission \
+    my-tenant/app1-namespace \
+    --role app1-role \
+    --actions produce,consume
+
+# Grant app2 access only to its namespace
+bin/pulsar-admin namespaces grant-permission \
+    my-tenant/app2-namespace \
+    --role app2-role \
+    --actions produce,consume
+```
+
+### Pattern 2: Read-Write Segregation
+
+```bash
+# Producers only have produce permission
+bin/pulsar-admin namespaces grant-permission \
+    my-tenant/my-namespace \
+    --role producer-role \
+    --actions produce
+
+# Consumers only have consume permission
+bin/pulsar-admin namespaces grant-permission \
+    my-tenant/my-namespace \
+    --role consumer-role \
+    --actions consume
+```
+
+### Pattern 3: Topic-Level Access Control
+
+```bash
+# Grant namespace-level consume
+bin/pulsar-admin namespaces grant-permission \
+    my-tenant/my-namespace \
+    --role analytics-role \
+    --actions consume
+
+# Restrict specific sensitive topic
+bin/pulsar-admin topics grant-permission \
+    persistent://my-tenant/my-namespace/sensitive-topic \
+    --role analytics-role \
+    --actions consume
+
+bin/pulsar-admin topics revoke-permission \
+    persistent://my-tenant/my-namespace/pii-topic \
+    --role analytics-role
+```
+
+## Troubleshooting
+
+### Authorization Failed Errors
+
+**Error: "Not authorized to access topic"**
+```bash
+# Check permissions
+bin/pulsar-admin namespaces permissions my-tenant/my-namespace
+
+# Verify role is authenticated correctly
+bin/pulsar-admin topics stats \
+    persistent://my-tenant/my-namespace/my-topic
+```
+
+**Error: "Role doesn't have permission to perform operation"**
+```bash
+# Grant required permission
+bin/pulsar-admin namespaces grant-permission \
+    my-tenant/my-namespace \
+    --role <role-name> \
+    --actions produce,consume
+```
+
+### Debugging Authorization
+
+Enable debug logging:
+
+```yaml
+# In log4j2.yaml
+Logger:
+  - name: org.apache.pulsar.broker.authorization
+    level: debug
+    additivity: false
+    AppenderRef:
+      - ref: Console
+```
+
+## Best Practices
+
+<Warning>
+Follow these authorization best practices:
+</Warning>
+
+1. **Apply principle of least privilege** - Grant only the minimum permissions required
+2. **Use namespace-level permissions** for consistent policies across topics
+3. **Limit super user roles** - Minimize the number of super users
+4. **Implement tenant isolation** - Use separate tenants for different teams or applications
+5. **Regular permission audits** - Periodically review and revoke unnecessary permissions
+6. **Document role assignments** - Maintain a record of who has access to what
+7. **Use topic-level permissions sparingly** - Prefer namespace policies for easier management
+8. **Test authorization changes** - Verify permissions before deploying to production
+9. **Monitor authorization failures** - Set up alerts for repeated authorization denials
+10. **Automate permission management** - Use infrastructure-as-code for consistent deployments
+
+## Example: Multi-Tenant Setup
+
+```bash
+# Create tenants for different organizations
+bin/pulsar-admin tenants create org-a --admin-roles org-a-admin
+bin/pulsar-admin tenants create org-b --admin-roles org-b-admin
+
+# Create namespaces
+bin/pulsar-admin namespaces create org-a/production
+bin/pulsar-admin namespaces create org-b/production
+
+# Grant permissions to organization A
+bin/pulsar-admin namespaces grant-permission \
+    org-a/production \
+    --role org-a-app \
+    --actions produce,consume
+
+# Grant permissions to organization B
+bin/pulsar-admin namespaces grant-permission \
+    org-b/production \
+    --role org-b-app \
+    --actions produce,consume
+
+# Verify isolation
+bin/pulsar-admin namespaces permissions org-a/production
+bin/pulsar-admin namespaces permissions org-b/production
+```
+
+## Next Steps
+
+<Card title="Encryption" icon="lock" href="/security/encryption">
+  Enable TLS encryption to secure data in transit
+</Card>

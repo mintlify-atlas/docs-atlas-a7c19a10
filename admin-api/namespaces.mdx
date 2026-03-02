@@ -1,0 +1,563 @@
+---
+title: "Namespaces API"
+description: "REST API endpoints for managing Pulsar namespaces, policies, and configurations"
+---
+
+## Overview
+
+Namespaces are logical groupings of topics within a tenant. They provide isolation and allow you to configure policies like retention, TTL, replication, and more. The Namespaces API provides comprehensive control over namespace configuration.
+
+**Base Path**: `/admin/v2/namespaces`
+
+## List Namespaces
+
+Get all namespaces for a specific tenant.
+
+```http
+GET /admin/v2/namespaces/{tenant}
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/namespaces/my-tenant \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+List<String> namespaces = admin.namespaces().getNamespaces("my-tenant");
+```
+
+```python Python
+namespaces = admin.namespaces().get_namespaces("my-tenant")
+```
+</CodeGroup>
+
+### Response Example
+
+```json
+[
+  "my-tenant/ns1",
+  "my-tenant/ns2",
+  "my-tenant/production"
+]
+```
+
+## Get Namespace Policies
+
+Retrieve all policies configured for a namespace.
+
+```http
+GET /admin/v2/namespaces/{tenant}/{namespace}
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+<ParamField path="namespace" type="string" required>
+  The namespace name
+</ParamField>
+
+### Response
+
+<ResponseField name="auth_policies" type="object">
+  Permission policies for roles
+</ResponseField>
+
+<ResponseField name="replication_clusters" type="array">
+  List of clusters for geo-replication
+</ResponseField>
+
+<ResponseField name="bundles" type="object">
+  Bundle split configuration
+</ResponseField>
+
+<ResponseField name="backlog_quota_map" type="object">
+  Backlog quota policies
+</ResponseField>
+
+<ResponseField name="persistence_policies" type="object">
+  Message persistence configuration
+</ResponseField>
+
+<ResponseField name="retention_policies" type="object">
+  Message retention settings
+</ResponseField>
+
+<ResponseField name="message_ttl_in_seconds" type="integer">
+  Time-to-live for messages
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/namespaces/my-tenant/my-namespace \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+Policies policies = admin.namespaces().getPolicies("my-tenant/my-namespace");
+```
+
+```python Python
+policies = admin.namespaces().get_policies("my-tenant/my-namespace")
+```
+</CodeGroup>
+
+## Create Namespace
+
+Create a new namespace within a tenant.
+
+```http
+PUT /admin/v2/namespaces/{tenant}/{namespace}
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+<ParamField path="namespace" type="string" required>
+  The namespace name to create
+</ParamField>
+
+### Request Body
+
+<ParamField body="policies" type="object">
+  Optional policies to set during creation
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X PUT http://localhost:8080/admin/v2/namespaces/my-tenant/my-namespace \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+```java Java
+admin.namespaces().createNamespace("my-tenant/my-namespace");
+```
+
+```python Python
+admin.namespaces().create_namespace("my-tenant/my-namespace")
+```
+</CodeGroup>
+
+### Response Codes
+
+| Code | Description |
+|------|-------------|
+| 204 | Namespace created successfully |
+| 403 | Don't have admin permission |
+| 404 | Tenant doesn't exist |
+| 409 | Namespace already exists |
+| 412 | Namespace name is not valid |
+
+## Delete Namespace
+
+Delete a namespace and all its topics.
+
+```http
+DELETE /admin/v2/namespaces/{tenant}/{namespace}
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+<ParamField path="namespace" type="string" required>
+  The namespace name to delete
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="force" type="boolean" default="false">
+  Force delete even if namespace is not empty
+</ParamField>
+
+<ParamField query="authoritative" type="boolean" default="false">
+  Whether this broker is authoritative for the operation
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:8080/admin/v2/namespaces/my-tenant/my-namespace \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+admin.namespaces().deleteNamespace("my-tenant/my-namespace");
+
+// Force delete
+admin.namespaces().deleteNamespace("my-tenant/my-namespace", true);
+```
+
+```python Python
+admin.namespaces().delete_namespace("my-tenant/my-namespace")
+
+# Force delete
+admin.namespaces().delete_namespace("my-tenant/my-namespace", force=True)
+```
+</CodeGroup>
+
+## Get Topics
+
+List all topics in a namespace.
+
+```http
+GET /admin/v2/namespaces/{tenant}/{namespace}/topics
+```
+
+### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+<ParamField path="namespace" type="string" required>
+  The namespace name
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="mode" type="string" default="PERSISTENT">
+  Topic mode: PERSISTENT, NON_PERSISTENT, or ALL
+</ParamField>
+
+<ParamField query="includeSystemTopic" type="boolean" default="false">
+  Whether to include system topics
+</ParamField>
+
+### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/namespaces/my-tenant/my-namespace/topics \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+List<String> topics = admin.topics().getList("my-tenant/my-namespace");
+```
+
+```python Python
+topics = admin.topics().get_list("my-tenant/my-namespace")
+```
+</CodeGroup>
+
+## Permissions
+
+### Grant Permission
+
+Grant permissions to a role on a namespace.
+
+```http
+POST /admin/v2/namespaces/{tenant}/{namespace}/permissions/{role}
+```
+
+#### Path Parameters
+
+<ParamField path="tenant" type="string" required>
+  The tenant name
+</ParamField>
+
+<ParamField path="namespace" type="string" required>
+  The namespace name
+</ParamField>
+
+<ParamField path="role" type="string" required>
+  The role name
+</ParamField>
+
+#### Request Body
+
+<ParamField body="actions" type="array" required>
+  Array of actions: "produce", "consume", "functions"
+</ParamField>
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/namespaces/my-tenant/my-namespace/permissions/my-role \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '["produce", "consume"]'
+```
+
+```java Java
+Set<AuthAction> actions = Set.of(AuthAction.produce, AuthAction.consume);
+admin.namespaces().grantPermissionOnNamespace("my-tenant/my-namespace", "my-role", actions);
+```
+</CodeGroup>
+
+### Get Permissions
+
+Retrieve permissions for a namespace.
+
+```http
+GET /admin/v2/namespaces/{tenant}/{namespace}/permissions
+```
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:8080/admin/v2/namespaces/my-tenant/my-namespace/permissions \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+Map<String, Set<AuthAction>> permissions = 
+  admin.namespaces().getPermissions("my-tenant/my-namespace");
+```
+</CodeGroup>
+
+### Revoke Permission
+
+Revoke all permissions from a role on a namespace.
+
+```http
+DELETE /admin/v2/namespaces/{tenant}/{namespace}/permissions/{role}
+```
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:8080/admin/v2/namespaces/my-tenant/my-namespace/permissions/my-role \
+  -H "Authorization: Bearer <token>"
+```
+
+```java Java
+admin.namespaces().revokePermissionsOnNamespace("my-tenant/my-namespace", "my-role");
+```
+</CodeGroup>
+
+## Message TTL
+
+### Set Message TTL
+
+Set the time-to-live for messages in a namespace.
+
+```http
+POST /admin/v2/namespaces/{tenant}/{namespace}/messageTTL
+```
+
+#### Request Body
+
+<ParamField body="messageTTL" type="integer" required>
+  TTL in seconds
+</ParamField>
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/namespaces/my-tenant/my-namespace/messageTTL \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '3600'
+```
+
+```java Java
+admin.namespaces().setNamespaceMessageTTL("my-tenant/my-namespace", 3600);
+```
+</CodeGroup>
+
+### Get Message TTL
+
+Get the message TTL for a namespace.
+
+```http
+GET /admin/v2/namespaces/{tenant}/{namespace}/messageTTL
+```
+
+### Remove Message TTL
+
+Remove the message TTL setting.
+
+```http
+DELETE /admin/v2/namespaces/{tenant}/{namespace}/messageTTL
+```
+
+## Replication
+
+### Set Replication Clusters
+
+Configure geo-replication for a namespace.
+
+```http
+POST /admin/v2/namespaces/{tenant}/{namespace}/replication
+```
+
+#### Request Body
+
+<ParamField body="clusterIds" type="array" required>
+  List of cluster names for replication
+</ParamField>
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/namespaces/my-tenant/my-namespace/replication \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '["us-west", "us-east", "eu-central"]'
+```
+
+```java Java
+List<String> clusters = List.of("us-west", "us-east", "eu-central");
+admin.namespaces().setNamespaceReplicationClusters("my-tenant/my-namespace", clusters);
+```
+</CodeGroup>
+
+### Get Replication Clusters
+
+Get the list of replication clusters.
+
+```http
+GET /admin/v2/namespaces/{tenant}/{namespace}/replication
+```
+
+## Deduplication
+
+### Enable/Disable Deduplication
+
+```http
+POST /admin/v2/namespaces/{tenant}/{namespace}/deduplication
+```
+
+#### Request Body
+
+<ParamField body="enableDeduplication" type="boolean" required>
+  Enable or disable broker-side deduplication
+</ParamField>
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/namespaces/my-tenant/my-namespace/deduplication \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d 'true'
+```
+
+```java Java
+admin.namespaces().setDeduplicationStatus("my-tenant/my-namespace", true);
+```
+</CodeGroup>
+
+### Get Deduplication Status
+
+```http
+GET /admin/v2/namespaces/{tenant}/{namespace}/deduplication
+```
+
+## Auto Topic Creation
+
+### Set Auto Topic Creation
+
+Configure automatic topic creation settings.
+
+```http
+POST /admin/v2/namespaces/{tenant}/{namespace}/autoTopicCreation
+```
+
+#### Request Body
+
+<ParamField body="allowAutoTopicCreation" type="boolean" required>
+  Whether to allow automatic topic creation
+</ParamField>
+
+<ParamField body="topicType" type="string" required>
+  Type of topics to create: "partitioned" or "non-partitioned"
+</ParamField>
+
+<ParamField body="defaultNumPartitions" type="integer">
+  Default number of partitions for partitioned topics
+</ParamField>
+
+#### Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/admin/v2/namespaces/my-tenant/my-namespace/autoTopicCreation \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "allowAutoTopicCreation": true,
+    "topicType": "partitioned",
+    "defaultNumPartitions": 3
+  }'
+```
+
+```java Java
+AutoTopicCreationOverride override = AutoTopicCreationOverride.builder()
+    .allowAutoTopicCreation(true)
+    .topicType("partitioned")
+    .defaultNumPartitions(3)
+    .build();
+
+admin.namespaces().setAutoTopicCreation("my-tenant/my-namespace", override);
+```
+</CodeGroup>
+
+## Best Practices
+
+### Namespace Organization
+
+- Create separate namespaces for different environments (dev, staging, prod)
+- Use namespaces to isolate different applications or teams
+- Keep related topics in the same namespace
+
+### Policy Configuration
+
+- Set appropriate retention policies based on use case
+- Configure message TTL to prevent unbounded growth
+- Enable deduplication for exactly-once semantics
+
+### Geo-Replication
+
+- Configure replication for disaster recovery
+- Consider network latency between clusters
+- Monitor replication lag
+
+### Permissions
+
+- Use least privilege principle
+- Grant permissions at namespace level when possible
+- Regularly audit and review permissions
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Tenants API" icon="users" href="/admin-api/tenants">
+    Manage parent tenant resources
+  </Card>
+  
+  <Card title="Topics API" icon="message" href="/admin-api/topics">
+    Manage topics within namespaces
+  </Card>
+</CardGroup>

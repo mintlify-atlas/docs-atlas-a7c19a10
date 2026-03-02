@@ -1,0 +1,485 @@
+---
+title: Authentication
+description: Configure authentication mechanisms in Apache Pulsar including Athenz, SASL, OIDC, and TLS
+---
+
+Authentication in Apache Pulsar verifies the identity of clients before granting access to cluster resources. Pulsar supports multiple authentication mechanisms to integrate with various enterprise security systems.
+
+## Enabling Authentication
+
+Authentication is configured in the broker configuration file:
+
+```properties
+# Enable authentication
+authenticationEnabled=true
+
+# Comma-separated list of authentication provider class names
+authenticationProviders=
+
+# Interval for checking expired credentials (seconds)
+authenticationRefreshCheckSeconds=60
+```
+
+<Warning>
+Always enable authentication in production environments. Unauthenticated clusters allow unrestricted access to all topics and administrative operations.
+</Warning>
+
+## Authentication Providers
+
+Pulsar includes several built-in authentication providers. You can configure multiple providers simultaneously.
+
+### Athenz Authentication
+
+Athenz is Yahoo's role-based authentication and authorization system. The Pulsar Athenz provider validates role tokens issued by Athenz.
+
+#### Broker Configuration
+
+```properties
+# Enable authentication
+authenticationEnabled=true
+
+# Add Athenz provider
+authenticationProviders=org.apache.pulsar.broker.authentication.AuthenticationProviderAthenz
+
+# Athenz domain names (comma-separated)
+athenzDomainNames=pulsar-tenant-domain,another-domain
+```
+
+#### System Properties
+
+Athenz configuration can also be set via JVM system properties:
+
+```bash
+# In pulsar_env.sh or broker startup script
+-Dpulsar.athenz.domain.names=pulsar-tenant-domain
+-Dpulsar.athenz.role.token_allowed_offset=30
+```
+
+**Configuration Parameters:**
+
+- `athenzDomainNames` - Comma-separated list of allowed Athenz domains
+- `pulsar.athenz.role.token_allowed_offset` - Time offset in seconds for token validation (default: 30)
+
+#### Client Configuration
+
+Source: `pulsar-client-auth-athenz/src/main/java/org/apache/pulsar/client/impl/auth/AuthenticationAthenz.java:1`
+
+```java
+import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.impl.auth.AuthenticationAthenz;
+
+// Configure Athenz authentication
+String authParams = String.format(
+    "{\"tenantDomain\":\"%s\",\"tenantService\":\"%s\",\"providerDomain\":\"%s\",\"privateKey\":\"%s\",\"keyId\":\"%s\"}",
+    tenantDomain, tenantService, providerDomain, privateKeyPath, keyId
+);
+
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar://broker.example.com:6650")
+    .authentication(
+        AuthenticationAthenz.class.getName(),
+        authParams
+    )
+    .build();
+```
+
+#### How Athenz Authentication Works
+
+Source: `pulsar-broker-auth-athenz/src/main/java/org/apache/pulsar/broker/authentication/AuthenticationProviderAthenz.java:105`
+
+1. Client presents an Athenz RoleToken in the request
+2. Broker validates the token's domain against allowed domains
+3. Broker retrieves the ZTS public key for the token's key ID
+4. Token signature and expiration are verified
+5. Principal is extracted from the validated token
+
+### SASL/Kerberos Authentication
+
+SASL (Simple Authentication and Security Layer) provides Kerberos-based authentication for enterprise environments.
+
+#### Broker Configuration
+
+Source: `pulsar-broker-auth-sasl/src/main/java/org/apache/pulsar/broker/authentication/AuthenticationProviderSasl.java:80`
+
+```properties
+# Enable authentication
+authenticationEnabled=true
+
+# Add SASL provider
+authenticationProviders=org.apache.pulsar.broker.authentication.AuthenticationProviderSasl
+
+# JAAS configuration section name
+saslJaasServerSectionName=PulsarBroker
+
+# Allowed client IDs (regex pattern)
+saslJaasClientAllowedIds=.*
+
+# Kerberos kinit command
+kinitCommand=/usr/bin/kinit
+
+# Secret path for role token signing
+saslJaasServerRoleTokenSignerSecretPath=/path/to/secret
+
+# Max inflight SASL contexts
+maxInflightSaslContext=1000
+
+# SASL context expiry (milliseconds)
+inflightSaslContextExpiryMs=60000
+```
+
+#### JAAS Configuration
+
+Create a JAAS configuration file (e.g., `/etc/pulsar/jaas.conf`):
+
+```
+PulsarBroker {
+    com.sun.security.auth.module.Krb5LoginModule required
+    useKeyTab=true
+    storeKey=true
+    useTicketCache=false
+    keyTab="/etc/security/keytabs/pulsar.keytab"
+    principal="pulsar/broker.example.com@EXAMPLE.COM";
+};
+```
+
+Set the JAAS configuration path:
+
+```bash
+# In pulsar_env.sh
+export PULSAR_EXTRA_OPTS="-Djava.security.auth.login.config=/etc/pulsar/jaas.conf"
+export PULSAR_EXTRA_OPTS="$PULSAR_EXTRA_OPTS -Djava.security.krb5.conf=/etc/krb5.conf"
+```
+
+#### Client Configuration
+
+Source: `pulsar-client-auth-sasl/src/main/java/org/apache/pulsar/client/impl/auth/AuthenticationSasl.java:74`
+
+```java
+import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.impl.auth.AuthenticationSasl;
+
+// JAAS client configuration
+String authParams = String.format(
+    "{\"saslJaasClientSectionName\":\"%s\",\"serverType\":\"%s\"}",
+    "PulsarClient", "broker"
+);
+
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar://broker.example.com:6650")
+    .authentication(
+        AuthenticationSasl.class.getName(),
+        authParams
+    )
+    .build();
+```
+
+Client JAAS configuration:
+
+```
+PulsarClient {
+    com.sun.security.auth.module.Krb5LoginModule required
+    useKeyTab=true
+    storeKey=true
+    keyTab="/path/to/client.keytab"
+    principal="client@EXAMPLE.COM";
+};
+```
+
+<Warning>
+SASL authentication requires properly configured Kerberos infrastructure. Ensure KDC connectivity and valid keytabs before enabling SASL.
+</Warning>
+
+### OpenID Connect (OIDC) Authentication
+
+OIDC provides modern JWT-based authentication with support for external identity providers like Okta, Auth0, and Keycloak.
+
+Source: `pulsar-broker-auth-oidc/src/main/java/org/apache/pulsar/broker/authentication/oidc/AuthenticationProviderOpenID.java:88`
+
+#### Broker Configuration
+
+```properties
+# Enable authentication
+authenticationEnabled=true
+
+# Add OIDC provider
+authenticationProviders=org.apache.pulsar.broker.authentication.oidc.AuthenticationProviderOpenID
+
+# Allowed token issuers (comma-separated HTTPS URLs)
+openIDAllowedTokenIssuers=https://accounts.google.com,https://auth.example.com
+
+# Allowed audiences (comma-separated)
+openIDAllowedAudiences=pulsar-cluster-prod
+
+# Role claim field in JWT (default: sub)
+openIDRoleClaim=sub
+
+# Accepted time leeway in seconds (default: 0)
+openIDAcceptedTimeLeewaySeconds=30
+
+# Require HTTPS for issuers (default: true)
+openIDRequireIssuersUseHttps=true
+
+# Cache configuration
+openIDCacheSize=5
+openIDCacheRefreshAfterWriteSeconds=64800
+openIDCacheExpirationSeconds=86400
+
+# HTTP timeouts
+openIDHttpConnectionTimeoutMillis=10000
+openIDHttpReadTimeoutMillis=10000
+```
+
+#### Supported Algorithms
+
+Source: `pulsar-broker-auth-oidc/src/main/java/org/apache/pulsar/broker/authentication/oidc/AuthenticationProviderOpenID.java:110`
+
+The OIDC provider supports the following JWT signing algorithms:
+
+- **RSA algorithms**: RS256, RS384, RS512
+- **ECDSA algorithms**: ES256, ES384, ES512
+
+#### Client Configuration
+
+```java
+import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.impl.auth.oauth2.AuthenticationOAuth2;
+
+// OAuth2/OIDC authentication
+String issuerUrl = "https://auth.example.com";
+String audience = "pulsar-cluster-prod";
+String credentialsUrl = "file:///path/to/credentials.json";
+
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar+ssl://broker.example.com:6651")
+    .authentication(
+        AuthenticationOAuth2.class.getName(),
+        String.format(
+            "{\"type\":\"client_credentials\",\"issuerUrl\":\"%s\",\"audience\":\"%s\",\"privateKey\":\"%s\"}",
+            issuerUrl, audience, credentialsUrl
+        )
+    )
+    .build();
+```
+
+#### Kubernetes Service Account Integration
+
+The OIDC provider supports Kubernetes service account tokens:
+
+```properties
+# Fallback discovery mode for Kubernetes
+openIDFallbackDiscoveryMode=KUBERNETES_DISCOVER_PUBLIC_KEYS
+```
+
+This allows Pulsar Functions running in Kubernetes to authenticate using their service account tokens.
+
+<Warning>
+Always validate issuer URLs use HTTPS in production. Set `openIDRequireIssuersUseHttps=true` to enforce secure connections.
+</Warning>
+
+### TLS Client Certificate Authentication
+
+Mutual TLS (mTLS) uses X.509 certificates for authentication.
+
+#### Broker Configuration
+
+```properties
+# Enable authentication
+authenticationEnabled=true
+
+# Add TLS authentication provider
+authenticationProviders=org.apache.pulsar.broker.authentication.AuthenticationProviderTls
+
+# Require trusted client certificates
+tlsRequireTrustedClientCertOnConnect=true
+
+# Trust certificate file
+tlsTrustCertsFilePath=/path/to/ca.cert.pem
+```
+
+#### Client Configuration
+
+```java
+import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.impl.auth.AuthenticationTls;
+
+Map<String, String> authParams = new HashMap<>();
+authParams.put("tlsCertFile", "/path/to/client.cert.pem");
+authParams.put("tlsKeyFile", "/path/to/client.key-pk8.pem");
+
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar+ssl://broker.example.com:6651")
+    .tlsTrustCertsFilePath("/path/to/ca.cert.pem")
+    .authentication(
+        AuthenticationTls.class.getName(),
+        authParams
+    )
+    .build();
+```
+
+### Token Authentication (JWT)
+
+Token authentication uses signed JWTs with a shared secret or public/private key pair.
+
+#### Broker Configuration
+
+```properties
+# Enable authentication
+authenticationEnabled=true
+
+# Add token provider
+authenticationProviders=org.apache.pulsar.broker.authentication.AuthenticationProviderToken
+
+# Token public key (for RS256/ES256)
+tokenPublicKey=file:///path/to/public.key
+
+# OR token secret key (for HS256)
+tokenSecretKey=file:///path/to/secret.key
+
+# Token audience claim
+tokenAudienceClaim=pulsar
+
+# Token authentication claim (default: sub)
+tokenAuthClaim=sub
+```
+
+#### Client Configuration
+
+```java
+import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.impl.auth.AuthenticationToken;
+
+String token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...";
+
+// Option 1: Direct token
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar://broker.example.com:6650")
+    .authentication(
+        AuthenticationToken.class.getName(),
+        token
+    )
+    .build();
+
+// Option 2: Token from file
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar://broker.example.com:6650")
+    .authentication(
+        AuthenticationToken.class.getName(),
+        "file:///path/to/token.txt"
+    )
+    .build();
+```
+
+## Anonymous Access
+
+You can configure a default role for unauthenticated users:
+
+```properties
+# Enable authentication
+authenticationEnabled=true
+
+# Anonymous user role
+anonymousUserRole=anonymous
+```
+
+<Warning>
+Use anonymous access cautiously. Grant minimal permissions to the anonymous role and prefer explicit authentication in production.
+</Warning>
+
+## Authentication Metrics
+
+Pulsar exposes authentication metrics for monitoring:
+
+- `pulsar_authentication_success_count{provider="<provider>"}`
+- `pulsar_authentication_failures_count{provider="<provider>",reason="<error_code>"}`
+
+These metrics are available at the broker's `/metrics` endpoint.
+
+## Proxy Authentication
+
+When using Pulsar proxy, configure both client-to-proxy and proxy-to-broker authentication:
+
+### Proxy Configuration
+
+```properties
+# Proxy authentication
+authenticationEnabled=true
+authenticationProviders=org.apache.pulsar.broker.authentication.AuthenticationProviderToken
+
+# Proxy role (for forwarding auth data)
+proxyRoles=proxy
+
+# Broker client authentication
+brokerClientAuthenticationPlugin=org.apache.pulsar.client.impl.auth.AuthenticationToken
+brokerClientAuthenticationParameters=file:///path/to/proxy-token.txt
+```
+
+### Broker Configuration
+
+```properties
+# Proxy roles that can forward authentication
+proxyRoles=proxy
+
+# Verify original auth data (recommended)
+authenticateOriginalAuthData=true
+```
+
+## Troubleshooting
+
+### Common Authentication Issues
+
+**Authentication Failed: No token provided**
+```
+Ensure the client is configured with authentication credentials.
+Verify the authentication plugin class name is correct.
+```
+
+**Authentication Failed: Invalid signature**
+```
+Verify the token/certificate was signed by the configured authority.
+Check that public keys or CA certificates match on client and broker.
+```
+
+**Authentication Failed: Token expired**
+```
+Renew the authentication token or certificate.
+Adjust time leeway settings if clock skew exists.
+```
+
+**SASL: No valid credentials provided**
+```
+Verify Kerberos keytab files are readable.
+Check JAAS configuration file syntax.
+Ensure KDC is accessible from the broker.
+```
+
+### Enabling Debug Logging
+
+```properties
+# In log4j2.yaml
+Logger:
+  - name: org.apache.pulsar.broker.authentication
+    level: debug
+    additivity: false
+    AppenderRef:
+      - ref: Console
+```
+
+## Best Practices
+
+<Warning>
+Follow these authentication best practices for secure deployments:
+</Warning>
+
+1. **Use certificate-based authentication** for machine-to-machine communication
+2. **Rotate credentials regularly** - implement automated token/certificate rotation
+3. **Implement credential refresh** - use short-lived tokens with refresh capabilities
+4. **Secure secret storage** - never commit secrets to version control
+5. **Monitor authentication failures** - set up alerts for suspicious activity
+6. **Use different credentials per environment** - separate dev, staging, and production secrets
+7. **Implement proper key management** - use HSMs or key management services for production
+
+## Next Steps
+
+<Card title="Authorization" icon="shield" href="/security/authorization">
+  Configure access control and permissions after setting up authentication
+</Card>

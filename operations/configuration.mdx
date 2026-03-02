@@ -1,0 +1,262 @@
+---
+title: Broker Configuration
+description: Configure Apache Pulsar brokers for production deployments
+---
+
+Apache Pulsar brokers are configured through the `broker.conf` or `standalone.conf` configuration files. This guide covers the most important configuration parameters for production deployments.
+
+## General Broker Settings
+
+Core settings that define how the broker operates and communicates.
+
+<ParamField path="metadataStoreUrl" type="string">
+  The metadata store URL for ZooKeeper or other metadata services.
+  
+  **Examples:**
+  - `zk:my-zk-1:2181,my-zk-2:2181,my-zk-3:2181`
+  - `zk:my-zk-1:2181,my-zk-2:2181,my-zk-3:2181/my-chroot-path`
+</ParamField>
+
+<ParamField path="clusterName" type="string">
+  Name of the cluster to which this broker belongs. This is required for multi-cluster deployments and geo-replication.
+</ParamField>
+
+<ParamField path="brokerServicePort" type="integer" default="6650">
+  Broker data port for Pulsar binary protocol connections.
+</ParamField>
+
+<ParamField path="webServicePort" type="integer" default="8080">
+  Port to serve HTTP requests, including the admin API.
+</ParamField>
+
+<ParamField path="brokerServicePortTls" type="integer">
+  Broker data port for TLS connections. TLS is disabled by default.
+</ParamField>
+
+<ParamField path="webServicePortTls" type="integer">
+  Port to serve HTTPS requests. TLS is disabled by default.
+</ParamField>
+
+## Network Configuration
+
+<ParamField path="bindAddress" type="string" default="0.0.0.0">
+  Hostname or IP address the service binds on.
+</ParamField>
+
+<ParamField path="advertisedAddress" type="string">
+  Hostname or IP address the service advertises to the outside world. If not set, uses the canonical hostname.
+</ParamField>
+
+<ParamField path="advertisedListeners" type="string">
+  Multiple advertised listeners for the broker in the format:
+  `<listener_name>:pulsar://<host>:<port>`
+  
+  Multiple listeners should be separated with commas. Do not use with `advertisedAddress` and `brokerServicePort`.
+</ParamField>
+
+## Thread Pool Configuration
+
+<ParamField path="numIOThreads" type="integer">
+  Number of threads to use for Netty IO.
+  
+  **Default:** `2 * Runtime.getRuntime().availableProcessors()`
+</ParamField>
+
+<ParamField path="numOrderedExecutorThreads" type="integer" default="8">
+  Number of threads for the ordered executor, used for ZooKeeper operations, namespace policies, and bundle splitting.
+</ParamField>
+
+<ParamField path="numHttpServerThreads" type="integer">
+  Number of threads for HTTP request processing.
+  
+  **Default:** `2 * Runtime.getRuntime().availableProcessors()`
+</ParamField>
+
+<ParamField path="numExecutorThreadPoolSize" type="integer">
+  Thread pool size for broker operations like load/unload bundles and leader election.
+  
+  **Default:** `Runtime.getRuntime().availableProcessors()`
+</ParamField>
+
+## Topic and Namespace Management
+
+<ParamField path="allowAutoTopicCreation" type="boolean" default="true">
+  Enable topic auto-creation when new producers or consumers connect.
+</ParamField>
+
+<ParamField path="allowAutoTopicCreationType" type="string" default="non-partitioned">
+  Type of topic allowed for auto-creation.
+  
+  **Options:** `partitioned` | `non-partitioned`
+</ParamField>
+
+<ParamField path="defaultNumPartitions" type="integer" default="1">
+  Number of partitions for auto-created partitioned topics.
+</ParamField>
+
+<ParamField path="allowAutoSubscriptionCreation" type="boolean" default="true">
+  Enable subscription auto-creation when new consumers connect.
+</ParamField>
+
+<ParamField path="brokerDeleteInactiveTopicsEnabled" type="boolean" default="true">
+  Enable deletion of inactive topics. Should be used with `allowAutoTopicCreation`.
+</ParamField>
+
+<ParamField path="brokerDeleteInactiveTopicsFrequencySeconds" type="integer" default="60">
+  How often to check for inactive topics (in seconds).
+</ParamField>
+
+<ParamField path="brokerDeleteInactiveTopicsMode" type="string" default="delete_when_no_subscriptions">
+  Mode for deleting inactive topics.
+  
+  **Options:**
+  - `delete_when_no_subscriptions` - Delete topics with no subscriptions and no active producers
+  - `delete_when_subscriptions_caught_up` - Delete topics where all subscriptions are caught up
+</ParamField>
+
+## Message Handling
+
+<ParamField path="maxMessageSize" type="integer" default="5242880">
+  Maximum size of messages in bytes (5 MB default).
+</ParamField>
+
+<ParamField path="messageExpiryCheckIntervalInMinutes" type="integer" default="5">
+  How frequently to check and purge expired messages.
+</ParamField>
+
+<ParamField path="maxUnackedMessagesPerConsumer" type="integer" default="50000">
+  Maximum unacknowledged messages allowed for a consumer on a shared subscription. When reached, the broker stops sending messages until the consumer acknowledges.
+  
+  Set to `0` to disable the limit.
+</ParamField>
+
+<ParamField path="maxUnackedMessagesPerSubscription" type="integer" default="200000">
+  Maximum unacknowledged messages allowed per shared subscription.
+  
+  Set to `0` to disable the limit.
+</ParamField>
+
+## Backlog Quotas
+
+<ParamField path="backlogQuotaCheckEnabled" type="boolean" default="true">
+  Enable backlog quota checks and enforcement.
+</ParamField>
+
+<ParamField path="backlogQuotaCheckIntervalInSeconds" type="integer" default="60">
+  How often to check for topics that have reached quota limits.
+</ParamField>
+
+<ParamField path="backlogQuotaDefaultLimitBytes" type="integer" default="-1">
+  Default per-topic backlog quota limit in bytes. `-1` means no limitation.
+</ParamField>
+
+<ParamField path="backlogQuotaDefaultRetentionPolicy" type="string" default="producer_request_hold">
+  Default backlog quota retention policy.
+  
+  **Options:**
+  - `producer_request_hold` - Hold producer send requests until resources are available
+  - `producer_exception` - Throw exception to the producer
+  - `consumer_backlog_eviction` - Evict oldest messages from slowest consumer
+</ParamField>
+
+## Metadata Store Settings
+
+<ParamField path="metadataStoreSessionTimeoutMillis" type="integer" default="30000">
+  Metadata store session timeout in milliseconds.
+</ParamField>
+
+<ParamField path="metadataStoreOperationTimeoutSeconds" type="integer" default="30">
+  Metadata store operation timeout in seconds.
+</ParamField>
+
+<ParamField path="metadataStoreBatchingEnabled" type="boolean" default="true">
+  Enable metadata operations batching for better performance.
+</ParamField>
+
+<ParamField path="metadataStoreBatchingMaxDelayMillis" type="integer" default="5">
+  Maximum delay for batching grouping in milliseconds.
+</ParamField>
+
+## BookKeeper Client Configuration
+
+<ParamField path="bookkeeperClientTimeoutInSeconds" type="integer" default="30">
+  Timeout for BookKeeper add/read operations.
+</ParamField>
+
+<ParamField path="bookkeeperClientHealthCheckEnabled" type="boolean" default="true">
+  Enable bookies health checks. Bookies with too many failures are quarantined.
+</ParamField>
+
+<ParamField path="bookkeeperClientRackawarePolicyEnabled" type="boolean" default="true">
+  Enable rack-aware bookie selection. BookKeeper chooses bookies from different racks when forming ensembles.
+</ParamField>
+
+## Managed Ledger Configuration
+
+<ParamField path="managedLedgerDefaultEnsembleSize" type="integer" default="1">
+  Number of bookies to use when creating a ledger (standalone default).
+</ParamField>
+
+<ParamField path="managedLedgerDefaultWriteQuorum" type="integer" default="1">
+  Number of copies to store for each message (standalone default).
+</ParamField>
+
+<ParamField path="managedLedgerDefaultAckQuorum" type="integer" default="1">
+  Number of guaranteed copies (acks to wait before write is complete).
+</ParamField>
+
+<ParamField path="managedLedgerMaxEntriesPerLedger" type="integer" default="50000">
+  Maximum entries to append to a ledger before triggering a rollover.
+</ParamField>
+
+<ParamField path="managedLedgerMinLedgerRolloverTimeMinutes" type="integer" default="10">
+  Minimum time between ledger rollovers for a topic.
+</ParamField>
+
+<ParamField path="managedLedgerMaxLedgerRolloverTimeMinutes" type="integer" default="240">
+  Maximum time before forcing a ledger rollover for a topic.
+</ParamField>
+
+## Performance Tuning
+
+<ParamField path="dispatcherMaxReadBatchSize" type="integer" default="100">
+  Maximum number of entries to read from BookKeeper per batch.
+</ParamField>
+
+<ParamField path="dispatcherMaxReadSizeBytes" type="integer" default="5242880">
+  Maximum size in bytes of entries to read from BookKeeper (5 MB default).
+</ParamField>
+
+<ParamField path="dispatchThrottlingRatePerTopicInMsg" type="integer" default="0">
+  Default message dispatch throttling limit per topic. `0` disables throttling.
+</ParamField>
+
+<ParamField path="dispatchThrottlingRatePerTopicInByte" type="integer" default="0">
+  Default byte dispatch throttling limit per topic. `0` disables throttling.
+</ParamField>
+
+## Configuration Files
+
+Pulsar provides two main configuration files:
+
+- `conf/broker.conf` - Configuration for production broker deployments
+- `conf/standalone.conf` - Configuration for standalone (single-node) deployments
+
+To apply configuration changes:
+
+1. Edit the configuration file
+2. Restart the broker service
+
+```bash
+bin/pulsar-daemon stop broker
+bin/pulsar-daemon start broker
+```
+
+## Environment Variables
+
+Many configuration parameters can be overridden using environment variables with the `PULSAR_PREFIX_` prefix:
+
+```bash
+export PULSAR_PREFIX_brokerServicePort=6650
+export PULSAR_PREFIX_clusterName=my-cluster
+```

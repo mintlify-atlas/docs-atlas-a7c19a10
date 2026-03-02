@@ -1,0 +1,418 @@
+---
+title: Multi-Tenancy
+description: Understanding Pulsar's tenant, namespace, and topic hierarchy
+---
+
+Apache Pulsar is designed as a multi-tenant system from the ground up, providing strong isolation between different organizational units, applications, and teams.
+
+## Hierarchical Organization
+
+Pulsar uses a three-level hierarchy for organizing topics:
+
+```
+Tenant → Namespace → Topic
+```
+
+From `pulsar-common/src/main/java/org/apache/pulsar/common/naming/TopicName.java` and `NamespaceName.java`, this structure is enforced at the core:
+
+```java
+// Complete topic name format
+persistent://tenant/namespace/topic
+
+// Examples
+persistent://acme-corp/production/orders
+persistent://acme-corp/staging/orders
+persistent://beta-inc/analytics/clicks
+```
+
+## Tenants
+
+Tenants represent the highest level of isolation in Pulsar, typically corresponding to:
+- Organizations
+- Business units
+- Major applications or services
+- Separate customer deployments
+
+### Creating Tenants
+
+```bash
+# Create a new tenant
+pulsar-admin tenants create acme-corp \
+  --admin-roles admin-user,ops-team \
+  --allowed-clusters us-west,us-east
+
+# List all tenants
+pulsar-admin tenants list
+
+# Get tenant info
+pulsar-admin tenants get acme-corp
+```
+
+### Tenant Configuration
+
+```bash
+# Update allowed clusters
+pulsar-admin tenants update acme-corp \
+  --admin-roles admin-user,ops-team,dev-lead \
+  --allowed-clusters us-west,us-east,eu-central
+
+# Delete a tenant (must have no namespaces)
+pulsar-admin tenants delete acme-corp
+```
+
+<Info>
+The `public` tenant is created by default in every Pulsar cluster and is useful for development and testing.
+</Info>
+
+## Namespaces
+
+Namespaces are the administrative units within a tenant. From `pulsar-common/src/main/java/org/apache/pulsar/common/naming/NamespaceName.java`:
+
+```java
+public class NamespaceName implements ServiceUnitId {
+    // Namespace format: tenant/namespace
+    // Or legacy format: tenant/cluster/namespace
+    
+    public static final NamespaceName SYSTEM_NAMESPACE = 
+        NamespaceName.get("pulsar/system");
+}
+```
+
+Namespaces group related topics and provide a scope for policies:
+
+```bash
+# Create a namespace
+pulsar-admin namespaces create acme-corp/production
+
+# List namespaces in a tenant
+pulsar-admin namespaces list acme-corp
+```
+
+<Info>
+The `public/default` namespace is created automatically and provides a convenient starting point for development.
+</Info>
+
+### Namespace Policies
+
+Namespaces are where most policies are applied:
+
+#### Retention Policies
+
+```bash
+# Set retention - keep data for 7 days or 100GB
+pulsar-admin namespaces set-retention acme-corp/production \
+  --size 100G \
+  --time 7d
+
+# Get retention policy
+pulsar-admin namespaces get-retention acme-corp/production
+```
+
+#### Backlog Quotas
+
+```bash
+# Limit total backlog size
+pulsar-admin namespaces set-backlog-quota acme-corp/production \
+  --limit 50G \
+  --policy producer_request_hold
+```
+
+Backlog quota policies:
+- `producer_request_hold`: Block producers when quota exceeded
+- `producer_exception`: Return error to producers
+- `consumer_backlog_eviction`: Remove oldest messages
+
+#### Message TTL
+
+```bash
+# Auto-delete messages after 24 hours if not consumed
+pulsar-admin namespaces set-message-ttl acme-corp/production \
+  --messageTTL 86400
+```
+
+#### Deduplication
+
+```bash
+# Enable message deduplication
+pulsar-admin namespaces set-deduplication acme-corp/production \
+  --enable
+```
+
+#### Replication
+
+```bash
+# Enable geo-replication to multiple clusters
+pulsar-admin namespaces set-clusters acme-corp/production \
+  --clusters us-west,us-east,eu-central
+```
+
+## Isolation Mechanisms
+
+Pulsar provides multiple levels of isolation:
+
+### Resource Isolation
+
+Namespaces can be isolated to specific brokers or broker groups:
+
+```bash
+# Create an isolation policy
+pulsar-admin ns-isolation-policy set \
+  --auto-failover-policy-type min_available \
+  --auto-failover-policy-params min_limit=1,usage_threshold=80 \
+  --namespaces "acme-corp/production.*" \
+  --primary "broker-[1-3]" \
+  my-cluster isolation-policy-1
+
+# List isolation policies
+pulsar-admin ns-isolation-policy list my-cluster
+```
+
+<Info>
+Isolation policies ensure that critical namespaces run on dedicated broker resources, preventing noisy neighbor problems.
+</Info>
+
+### Authentication & Authorization
+
+Tenants and namespaces support fine-grained access control:
+
+```bash
+# Grant permissions to a role
+pulsar-admin namespaces grant-permission acme-corp/production \
+  --role app-producer \
+  --actions produce
+
+pulsar-admin namespaces grant-permission acme-corp/production \
+  --role app-consumer \
+  --actions consume
+
+# Revoke permissions
+pulsar-admin namespaces revoke-permission acme-corp/production \
+  --role old-app
+
+# List permissions
+pulsar-admin namespaces permissions acme-corp/production
+```
+
+Available actions:
+- `produce`: Allow publishing messages
+- `consume`: Allow consuming messages
+- `functions`: Allow deploying functions
+
+### Client Authentication
+
+From broker configuration (`conf/broker.conf`):
+
+```properties
+# Enable authentication
+authenticationEnabled=true
+authenticationProviders=org.apache.pulsar.broker.authentication.AuthenticationProviderToken
+
+# Enable authorization
+authorizationEnabled=true
+```
+
+Clients authenticate using various methods:
+
+```java
+// Token-based authentication
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar://localhost:6650")
+    .authentication(
+        AuthenticationFactory.token("eyJhbGciOiJIUzI1NiJ9..."))
+    .build();
+
+// TLS authentication
+PulsarClient client = PulsarClient.builder()
+    .serviceUrl("pulsar+ssl://localhost:6651")
+    .authentication(
+        AuthenticationFactory.create(
+            "org.apache.pulsar.client.impl.auth.AuthenticationTls",
+            Map.of(
+                "tlsCertFile", "/path/to/cert.pem",
+                "tlsKeyFile", "/path/to/key.pem"
+            )))
+    .build();
+```
+
+## Resource Quotas
+
+Control resource usage at the namespace level:
+
+```bash
+# Set throughput quotas
+pulsar-admin resource-quotas set \
+  --namespace acme-corp/production \
+  --msgRateIn 1000 \
+  --msgRateOut 2000 \
+  --bandwidthIn 10000000 \
+  --bandwidthOut 20000000 \
+  --memory 100
+
+# Get current quotas
+pulsar-admin resource-quotas get acme-corp/production
+```
+
+## Organization Patterns
+
+### By Environment
+
+```bash
+# Separate namespaces per environment
+acme-corp/production
+acme-corp/staging
+acme-corp/development
+acme-corp/testing
+```
+
+### By Application
+
+```bash
+# Separate namespaces per application
+acme-corp/ecommerce
+acme-corp/analytics
+acme-corp/notifications
+acme-corp/billing
+```
+
+### By Team
+
+```bash
+# Separate namespaces per team
+acme-corp/team-backend
+acme-corp/team-frontend
+acme-corp/team-data
+acme-corp/team-ml
+```
+
+### Hybrid Approach
+
+```bash
+# Combine patterns
+acme-corp/ecommerce-production
+acme-corp/ecommerce-staging
+acme-corp/analytics-production
+acme-corp/analytics-staging
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Tenant Organization">
+    - Use tenants for major organizational boundaries
+    - Create separate tenants for production vs development when isolation is critical
+    - Assign admin roles carefully at the tenant level
+    - Document tenant ownership and purpose
+  </Accordion>
+  
+  <Accordion title="Namespace Design">
+    - Group related topics in the same namespace
+    - Use consistent naming conventions
+    - Set conservative retention policies initially
+    - Apply namespace policies before creating topics
+    - Monitor namespace metrics regularly
+  </Accordion>
+  
+  <Accordion title="Access Control">
+    - Follow principle of least privilege
+    - Use role-based access control
+    - Regularly audit permissions
+    - Rotate authentication tokens/certificates
+    - Enable both authentication and authorization in production
+  </Accordion>
+  
+  <Accordion title="Resource Management">
+    - Set backlog quotas to prevent runaway storage
+    - Use resource quotas for capacity planning
+    - Monitor namespace resource usage
+    - Use isolation policies for critical workloads
+  </Accordion>
+</AccordionGroup>
+
+## Common Use Cases
+
+### SaaS Application
+
+```bash
+# Separate tenant per customer
+customer-a/production
+customer-b/production
+customer-c/production
+
+# Each with isolated resources and quotas
+pulsar-admin resource-quotas set \
+  --namespace customer-a/production \
+  --msgRateIn 10000 \
+  --bandwidthIn 100000000
+```
+
+### Large Enterprise
+
+```bash
+# Tenant per business unit
+retail/production
+wholesale/production
+manufacturing/production
+
+# Shared infrastructure tenant
+platform/shared-services
+platform/monitoring
+```
+
+### Development Environment
+
+```bash
+# Use default tenant for quick testing
+public/default/test-topic
+
+# Create development tenant for longer-term dev work
+dev/local/my-feature-topic
+```
+
+## Monitoring Multi-Tenancy
+
+```bash
+# Monitor namespace statistics
+pulsar-admin namespaces stats acme-corp/production
+
+# Check bundle distribution
+pulsar-admin namespaces bundles acme-corp/production
+
+# View topic backlog by namespace
+pulsar-admin topics stats-internal persistent://acme-corp/production/my-topic
+```
+
+## Migration Strategies
+
+### Moving Topics Between Namespaces
+
+```bash
+# Create new namespace with desired policies
+pulsar-admin namespaces create acme-corp/new-namespace
+
+# Set policies on new namespace
+pulsar-admin namespaces set-retention acme-corp/new-namespace --size 100G --time 7d
+
+# Update client configurations to use new topic names
+# persistent://acme-corp/new-namespace/my-topic
+```
+
+<Warning>
+Pulsar doesn't support moving topics between namespaces. Plan your namespace structure carefully, or implement dual-write during migrations.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="diagram-project" href="/concepts/architecture">
+    Learn about Pulsar's distributed architecture
+  </Card>
+  <Card title="Topics" icon="layer-group" href="/concepts/topics">
+    Understand topic naming and types
+  </Card>
+  <Card title="Security" icon="shield" href="/security">
+    Configure authentication and authorization
+  </Card>
+  <Card title="Administration" icon="wrench" href="/admin">
+    Learn cluster administration
+  </Card>
+</CardGroup>

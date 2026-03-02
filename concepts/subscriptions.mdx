@@ -1,0 +1,432 @@
+---
+title: Subscriptions
+description: Understanding Pulsar's subscription types and consumption patterns
+---
+
+Subscriptions are named configurations that track message consumption progress for one or more consumers. Pulsar supports multiple subscription types, each with different semantics.
+
+## Subscription Basics
+
+A subscription:
+- Has a name unique within a topic
+- Tracks which messages have been acknowledged
+- Persists even after all consumers disconnect
+- Can be shared by multiple consumers (depending on type)
+
+From `pulsar-client-api/src/main/java/org/apache/pulsar/client/api/Consumer.java`:
+
+```java
+Consumer<String> consumer = client.newConsumer(Schema.STRING)
+    .topic("persistent://tenant/ns/topic")
+    .subscriptionName("my-subscription")  // Names the subscription
+    .subscriptionType(SubscriptionType.Shared)  // Determines behavior
+    .subscribe();
+```
+
+<Info>
+Subscriptions are durable - even if all consumers disconnect, the subscription cursor position is preserved. When consumers reconnect, they resume from where they left off.
+</Info>
+
+## Subscription Types
+
+From `pulsar-client-api/src/main/java/org/apache/pulsar/client/api/SubscriptionType.java`, Pulsar supports four subscription types:
+
+### Exclusive
+
+**Only one consumer can be attached to the subscription at a time.**
+
+```java
+public enum SubscriptionType {
+    /**
+     * There can be only 1 consumer on the same topic with the same subscription name.
+     */
+    Exclusive
+}
+```
+
+```java
+Consumer<String> consumer = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-exclusive-sub")
+    .subscriptionType(SubscriptionType.Exclusive)  // Default type
+    .subscribe();
+```
+
+**Characteristics:**
+- Single active consumer per subscription
+- Strict message ordering guaranteed
+- If consumer disconnects, another can take over
+- Attempting to connect a second consumer fails
+
+**Use Cases:**
+- When processing must be sequential
+- Single-threaded message processing
+- Strict ordering requirements
+
+<Warning>
+If you need multiple consumers for higher throughput, use Failover or Shared subscriptions instead.
+</Warning>
+
+### Failover
+
+**Multiple consumers can attach, but only one actively receives messages.**
+
+```java
+public enum SubscriptionType {
+    /**
+     * Multiple consumers can use the same subscription name but only 1 consumer 
+     * will receive messages. If that consumer disconnects, one of the other 
+     * connected consumers will start receiving messages.
+     * 
+     * In failover mode, the consumption ordering is guaranteed.
+     * 
+     * In case of partitioned topics, the ordering is guaranteed on a per-partition basis.
+     * The partition assignments will be split across available consumers.
+     */
+    Failover
+}
+```
+
+```java
+// Consumer 1 - active
+Consumer<String> consumer1 = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-failover-sub")
+    .subscriptionType(SubscriptionType.Failover)
+    .consumerName("consumer-1")
+    .subscribe();
+
+// Consumer 2 - standby
+Consumer<String> consumer2 = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-failover-sub")
+    .subscriptionType(SubscriptionType.Failover)
+    .consumerName("consumer-2")
+    .subscribe();
+```
+
+**Characteristics:**
+- One consumer active, others on standby
+- Automatic failover when active consumer disconnects
+- Message ordering preserved
+- For partitioned topics: partitions distributed across consumers
+
+**Use Cases:**
+- High availability with ordering guarantees
+- Automatic failover without manual intervention
+- Processing that requires ordering but needs redundancy
+
+### Shared
+
+**Multiple consumers receive messages in round-robin distribution.**
+
+```java
+public enum SubscriptionType {
+    /**
+     * Multiple consumers will be able to use the same subscription name and 
+     * messages will be dispatched according to a round-robin rotation between 
+     * connected consumers.
+     * 
+     * In this mode, the consumption order is not guaranteed.
+     */
+    Shared
+}
+```
+
+```java
+// Consumer 1
+Consumer<String> consumer1 = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-shared-sub")
+    .subscriptionType(SubscriptionType.Shared)
+    .subscribe();
+
+// Consumer 2
+Consumer<String> consumer2 = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-shared-sub")
+    .subscriptionType(SubscriptionType.Shared)
+    .subscribe();
+```
+
+**Characteristics:**
+- Messages distributed round-robin across all consumers
+- No ordering guarantees
+- Maximum parallelism
+- Individual message acknowledgment required
+
+**Use Cases:**
+- High-throughput scenarios
+- Order-independent processing
+- Scaling consumption horizontally
+- Worker queue patterns
+
+<Info>
+Shared subscriptions provide the highest throughput by distributing messages across all available consumers.
+</Info>
+
+### Key_Shared
+
+**Messages with the same key go to the same consumer.**
+
+```java
+public enum SubscriptionType {
+    /**
+     * Multiple consumers can use the same subscription and all messages with 
+     * the same key will be dispatched to only one consumer.
+     * 
+     * Use ordering_key to overwrite the message key for message ordering.
+     */
+    Key_Shared
+}
+```
+
+```java
+Consumer<String> consumer = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-key-shared-sub")
+    .subscriptionType(SubscriptionType.Key_Shared)
+    .subscribe();
+
+// Producer sends messages with keys
+producer.newMessage()
+    .key("user-123")  // All messages with this key go to same consumer
+    .value("order data")
+    .send();
+```
+
+**Characteristics:**
+- Ordering guaranteed per key
+- Parallel processing across different keys
+- Keys distributed across consumers using hash
+- Can use `orderingKey` instead of message key
+
+**Use Cases:**
+- Per-entity ordering (e.g., per-user, per-device)
+- Stateful processing where related messages must be processed together
+- Combining parallelism with partial ordering
+
+<Warning>
+Messages without a key are distributed round-robin. Always set keys for messages when using Key_Shared subscriptions.
+</Warning>
+
+## Subscription Modes
+
+From `pulsar-client-api/src/main/java/org/apache/pulsar/client/api/SubscriptionMode.java`:
+
+```java
+Consumer<String> consumer = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-sub")
+    .subscriptionMode(SubscriptionMode.Durable)  // or NonDurable
+    .subscribe();
+```
+
+### Durable (Default)
+
+Subscription cursor persists even after all consumers disconnect:
+
+```java
+subscriptionMode(SubscriptionMode.Durable)
+```
+
+### Non-Durable
+
+Subscription automatically deleted when last consumer disconnects:
+
+```java
+subscriptionMode(SubscriptionMode.NonDurable)
+```
+
+## Initial Position
+
+From `pulsar-client-api/src/main/java/org/apache/pulsar/client/api/SubscriptionInitialPosition.java`:
+
+```java
+Consumer<String> consumer = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-sub")
+    .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)  // or Latest
+    .subscribe();
+```
+
+**Latest (Default)**: New subscriptions start at the most recent message
+
+**Earliest**: New subscriptions start at the oldest available message
+
+<Info>
+Initial position only applies when creating a new subscription. Existing subscriptions always resume from their last acknowledged position.
+</Info>
+
+## Cursor Management
+
+Each subscription maintains a cursor tracking consumption progress:
+
+```bash
+# View subscription details
+pulsar-admin topics stats persistent://tenant/ns/topic
+
+# Reset subscription to specific position
+pulsar-admin topics reset-cursor \
+  persistent://tenant/ns/topic \
+  --subscription my-sub \
+  --time "2024-01-01T00:00:00"
+
+# Skip messages
+pulsar-admin topics skip \
+  persistent://tenant/ns/topic \
+  --subscription my-sub \
+  --count 1000
+```
+
+## Acknowledgment Patterns
+
+Different subscription types support different acknowledgment patterns:
+
+### Individual Acknowledgment (All Types)
+
+```java
+Message<String> msg = consumer.receive();
+processMessage(msg);
+consumer.acknowledge(msg);
+```
+
+### Cumulative Acknowledgment (Exclusive/Failover Only)
+
+```java
+Message<String> msg = consumer.receive();
+processMessage(msg);
+consumer.acknowledgeCumulative(msg);
+// All messages up to and including 'msg' are acknowledged
+```
+
+<Warning>
+Cumulative acknowledgment is not supported with Shared or Key_Shared subscriptions because message ordering is not guaranteed.
+</Warning>
+
+### Batch Acknowledgment
+
+```java
+Messages<String> messages = consumer.batchReceive();
+for (Message<String> msg : messages) {
+    processMessage(msg);
+}
+consumer.acknowledge(messages);  // Acknowledge all at once
+```
+
+## Subscription Backlog
+
+The backlog is the number of unacknowledged messages:
+
+```bash
+# View backlog for all subscriptions
+pulsar-admin topics stats persistent://tenant/ns/topic
+
+# Clear backlog (skip all unacknowledged messages)
+pulsar-admin topics clear-backlog \
+  persistent://tenant/ns/topic \
+  --subscription my-sub
+```
+
+## Subscription Comparison
+
+<table>
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th>Exclusive</th>
+      <th>Failover</th>
+      <th>Shared</th>
+      <th>Key_Shared</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Multiple Consumers</td>
+      <td>No</td>
+      <td>Yes (one active)</td>
+      <td>Yes (all active)</td>
+      <td>Yes (all active)</td>
+    </tr>
+    <tr>
+      <td>Message Ordering</td>
+      <td>Guaranteed</td>
+      <td>Guaranteed</td>
+      <td>Not guaranteed</td>
+      <td>Per-key</td>
+    </tr>
+    <tr>
+      <td>Cumulative Ack</td>
+      <td>Yes</td>
+      <td>Yes</td>
+      <td>No</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td>Throughput</td>
+      <td>Low</td>
+      <td>Medium</td>
+      <td>High</td>
+      <td>High</td>
+    </tr>
+    <tr>
+      <td>Use Case</td>
+      <td>Sequential processing</td>
+      <td>HA with ordering</td>
+      <td>High throughput</td>
+      <td>Per-key ordering</td>
+    </tr>
+  </tbody>
+</table>
+
+## Advanced Configuration
+
+### Dead Letter Topics
+
+```java
+Consumer<String> consumer = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-sub")
+    .deadLetterPolicy(DeadLetterPolicy.builder()
+        .maxRedeliverCount(5)
+        .deadLetterTopic("my-topic-DLQ")
+        .build())
+    .subscribe();
+```
+
+### Negative Acknowledgment Delay
+
+```java
+Consumer<String> consumer = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-sub")
+    .negativeAckRedeliveryDelay(60, TimeUnit.SECONDS)
+    .subscribe();
+```
+
+### Acknowledgment Timeout
+
+```java
+Consumer<String> consumer = client.newConsumer(Schema.STRING)
+    .topic("my-topic")
+    .subscriptionName("my-sub")
+    .ackTimeout(30, TimeUnit.SECONDS)
+    .subscribe();
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Producers & Consumers" icon="arrows-left-right" href="/concepts/producers-consumers">
+    Learn about client implementation details
+  </Card>
+  <Card title="Messaging" icon="message" href="/concepts/messaging">
+    Understand message delivery semantics
+  </Card>
+  <Card title="Topics" icon="layer-group" href="/concepts/topics">
+    Explore topic types and configuration
+  </Card>
+  <Card title="Schemas" icon="file-code" href="/concepts/schemas">
+    Learn about schema evolution
+  </Card>
+</CardGroup>
